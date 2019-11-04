@@ -24,15 +24,33 @@ for test in tests:
   chk_file = os.path.join(cwd, test)
   text = open(chk_file).read()
   if not "PASSED" in text:
+
     failstr = "FAILED"
+    errorstr = ""
     if "TIMEOUT" in text:
       failstr = "TIMEOUT" 
     elif "TERMINATED" in text:
       failstr = "TERMINATED"
     elif "ERROR" in text:
       failstr = "ERROR"
-    failstr = "%s %s" % (chk_file, failstr)
+      error_file = os.path.splitext(chk_file)[0] + ".tmp-out.ERROR"
+      if(os.path.isfile(error_file)):
+          with open(error_file) as etext:
+              head = etext.readlines()
+
+          head = [line.rstrip() for line in head]
+          head = [line for line in head if line]
+          errorstr = "\t" + "\n".join(head[:5])
+
+    # Check if there was a diff file generated
+    diff_file = os.path.splitext(chk_file)[0] + ".diff"
+    if(os.path.isfile(diff_file)):
+        failstr = "%s %s with %s" % (diff_file, failstr, "diff")
+    else:
+        failstr = "%s %s" % (chk_file, failstr)
     print (bcolors.FAIL + failstr + bcolors.ENDC)
+    if(errorstr):
+        print(errorstr)
     failures += 1
   total += 1
 
