@@ -76,65 +76,6 @@ template <typename Container> std::string makeNameRegex(Container const &C) {
 }
 } // namespace detail
 
-template <typename StmtDecl>
-auto matchNonLocalUsedVariables(StmtDecl const *SD, clang::ASTContext &Ctx,
-                                std::string nameRegex = " ") {
-  using namespace clang::ast_matchers;
-  // clang-format off
-  return detail::toPtrSet<clang::VarDecl>(
-      match(
-        findAll( // All
-          declRefExpr( // DeclRefExprs
-            to(
-              varDecl( // that refer to Variables
-                unless( // unless they descend from the current node
-                  hasAncestor( 
-                    equalsNode(SD)
-                  )
-                ),
-                unless( // or are blacklisted
-                  matchesName(nameRegex)
-                )
-              ).bind("varDecls") // and bind them to BindId
-            )
-          )
-        )
-      , *SD, Ctx) , "varDecls");
-  // clang-format on
-}
-
-template <typename StmtDecl, typename Container>
-auto matchNamedUsedVariables(StmtDecl const *SD, clang::ASTContext &Ctx,
-                             Container const &VariableNames) {
-  assert(not VariableNames.empty());
-
-  using namespace clang::ast_matchers;
-  auto NameRegex = detail::makeNameRegex(VariableNames);
-  // clang-format off
-  return detail::toPtrSet<clang::VarDecl>(
-      match(
-        findAll(
-          declRefExpr( // DeclRefExprs
-            to(
-              varDecl( // that are variables 
-                matchesName(NameRegex)  // and has one of the names given
-              ).bind("varDecls")
-            )
-          )
-        )
-      , *SD, Ctx), "varDecls");
-  // clang-format on
-}
-
-template <typename StmtDecl, typename Container>
-auto matchNamedMetaVariables(StmtDecl const *SD, clang::ASTContext &Ctx,
-                             Container const &MetaVariableNames) {
-  assert(not MetaVariableNames.empty());
-  llvm::errs() << "Warning: meta_variables are currently disabled due to "
-                  "matching difficulty.\n";
-  return llvm::SmallPtrSet<clang::VarDecl const *, 4>{};
-}
-
 inline clang::NamedDecl const *getParentDecl(clang::Stmt const *S,
                                              clang::ASTContext &Ctx) {
   using namespace clang::ast_matchers;
@@ -149,6 +90,6 @@ inline clang::NamedDecl const *getParentDecl(clang::Stmt const *S,
   // clang-format on
 }
 
-void memoizationAutoMatcher(clang::Stmt const *S);
+void memoizationAutoMatcher(clang::Stmt const *S, std::string const& namedDecls = "");
 
 #endif //  bin_clang_memoizeVariableCaputreAnalyzer_H

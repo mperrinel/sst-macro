@@ -54,191 +54,57 @@ namespace {
 using namespace clang;
 using namespace ast_matchers;
 
-template <typename T, unsigned N>
-T const *
-getFirst(llvm::SmallVector<clang::ast_matchers::BoundNodes, N> const &Nodes,
-         std::string const &ID) {
-
-  for (auto const &Node : Nodes) {
-    if (auto match = Node.template getNodeAs<T>(ID)) {
-      return match;
-    }
-  }
-
-  return nullptr;
-}
-
-// Needs to be an optional because we want nullopt if there is no init condition
-std::optional<std::pair<VarDecl const *, Expr const *>>
-getLoopInitVar(ForStmt const *FS) {
-  if (FS->getInit() == nullptr) {
-    return std::nullopt;
-  }
-
+void forStmtVariableAutoMatcher(clang::ForStmt const *FS,
+                                std::string const &namedDeclsToCapture) {
   // clang-format off
-     auto BN = match(
-        forStmt(
-          hasLoopInit(
-            declStmt(
-              hasSingleDecl(
-                varDecl(
-                  hasInitializer(
-                    expr(
-                      unless(
-                        integerLiteral()
-                      )
-                    ).bind("Init Expression")
-                  )
-                ).bind("InitVar")
-              )
-            )
-          )
-        )
-      , *FS, *sst::activeASTContext);
-  // clang-format on
-  //
-  Expr const *Exp = nullptr;
-  VarDecl const *VD = nullptr;
-  for (auto const &Node : BN) {
-    Exp = Node.getNodeAs<Expr>("Init Expression");
-    VD = Node.getNodeAs<VarDecl>("InitVar");
-  }
-
-  return std::make_optional(std::make_pair(VD, Exp));
-}
-
-std::optional<llvm::SmallPtrSet<VarDecl const *, 4>>
-getLoopCondition(ForStmt const *FS, VarDecl const *LoopInit) {
-  auto Condition = FS->getCond();
-  if (Condition == nullptr) { // Don't handle conditionless situations
-    return std::nullopt;
-  }
-
-  // clang-format off
-  return std::make_optional(::detail::toPtrSet<VarDecl>(
-      match(
-        findAll(
-          forStmt(
-            hasCondition(
-              binaryOperator(
-                hasDescendant(
-                  declRefExpr(
-                    to(
-                      varDecl(
-                        unless(
-                          equalsNode(LoopInit)
-                        )
-                      ).bind("ID")
-                    )
-                  )
-                )
-              )
-            )
-          )
-        ), *FS, *sst::activeASTContext), "ID"));
-  // clang-format on
-}
-
-void forStmtVariableAutoMatcher(clang::ForStmt const *FS) {
   /*
-   *  Get all the Variables declared in our ForStmt
+   *  Get all the Variables declared in our ForStmt that we care about
    */
-//  auto getLoopVars =
-//      findAll(declStmt(forEachDescendant(varDecl().bind("LoopDeclared"))));
+  auto getLoopVarsOrAnything = anyOf(
+         forEachDescendant(
+           declStmt(forEach(varDecl().bind("Declared")))
+         ),
+         anything()
+       );
 
-auto getLoopVars = forEachDescendant(declStmt(forEach(varDecl().bind("LoopDeclared"))));
-
-  /*
-   *  Get all the conditions in our ForStmt
-   */
-  // auto getConditionExpr = hasCondition(expr().bind("Condition"));
-
-  // clang-format off
-  //  auto getAllConditions = 
-  //      findAll(
-  //        stmt( // Required since these all return different stmt types, I think
-  //          anyOf(
-  //            forStmt(getConditionExpr), ifStmt(getConditionExpr),
-  //            doStmt(getConditionExpr), whileStmt(getConditionExpr),
-  //            switchStmt(getConditionExpr), conditionalOperator(getConditionExpr),
-  //            binaryConditionalOperator(getConditionExpr)
-  //          )
-  //        )
-  //      );
-  
-  // clang-format on
-
-  // auto dependsOnLoopDeclaredVar = findAll(
-  //     declRefExpr(
-  //       to(
-  //         varDecl(
-  //           equalsBoundNode("LoopDeclared")
-  //         )
-  //       )
-  //     )
-  //   );
-  //auto cameFromCondition = hasAncestor(expr(equalsBoundNode("Condition")));
-  
   auto dependsOnLoopDeclaredVar = findAll(
-      declRefExpr(
-        to(
-          varDecl(
-            equalsBoundNode("Declared")
-          )
-        )
-      )
-    );
+          declRefExpr(to(varDecl(equalsBoundNode("Declared"))))
+       );
 
   auto getConditionExpr = hasCondition(expr().bind("ConditionExpr"));
-  auto getAllConditions = 
-      findAll(
-        stmt( // I think this is required since these all return different stmt types
-          anyOf(
-            forStmt(getConditionExpr), ifStmt(getConditionExpr)
-          )
-        )
-      );
 
-  auto cameFromCondition = hasAncestor(expr(equalsBoundNode("ConditionExpr")));
-  auto BN =
-      match(
-          stmt(
-            // Get all variables declared in the loop
-            anyOf(
-              forEachDescendant(declStmt(forEach(varDecl().bind("Declared")))),
-              anything()
-            ),
-            getAllConditions,
-            forEachDescendant(
-              expr(
-                hasAncestor(expr(equalsBoundNode("ConditionExpr"))),
-                unless(
-                  findAll(declRefExpr(to(varDecl(equalsBoundNode("Declared")))))
-                )
-              ).bind("InnerExpr")
-            )
-        )
-        , *FS, *sst::activeASTContext);  // FS is a ForStmt
+  auto getAllConditions = findAll(
+      stmt(anyOf(forStmt(getConditionExpr), ifStmt(getConditionExpr),
+                 whileStmt(getConditionExpr), doStmt(getConditionExpr))));
 
-  // auto BN =
-  //     match(stmt(
-  //             eachOf(
-  //               getLoopVars
-  //               ,getAllConditions
-  //             )
-  //             ,forEachDescendant(
-  //               expr(
-  //                 cameFromCondition
-  //                 ,unless(
-  //                    dependsOnLoopDeclaredVar
-  //                 )
-  //             //  //    // ,hasType(asString("int"))
-  //             //     // ,unless(
-  //             //     //   integerLiteral()
-  //             //     // )
-  //                ).bind("ConditionExpr")
-  //             )
-  //         ), *FS, *sst::activeASTContext);
+  auto hasMatchingAncestorExpr = [](std::string const &str) {
+    return hasAncestor(expr(equalsBoundNode(str)));
+  };
+
+  auto getNestedConditionExprs = forEachDescendant(
+         expr(
+           anyOf(
+             equalsBoundNode("ConditionExpr"),
+             hasMatchingAncestorExpr("ConditionExpr")
+           ),
+           unless(dependsOnLoopDeclaredVar)
+         ).bind("InnerExpr")
+       );
+
+  auto filterForTopMatch = forEachDescendant(
+         expr(
+           equalsBoundNode("InnerExpr"),
+           unless(hasMatchingAncestorExpr("InnerExpr"))
+         ).bind("FinalExpr")
+       );
+
+  auto BN = match(
+      stmt(
+        getLoopVarsOrAnything,
+        getAllConditions,
+        getNestedConditionExprs,
+        filterForTopMatch
+      ), *FS, *sst::activeASTContext); // FS is a ForStmt
   // clang-format on
 
   llvm::errs() << "\n";
@@ -255,8 +121,43 @@ auto getLoopVars = forEachDescendant(declStmt(forEach(varDecl().bind("LoopDeclar
     llvm::errs() << "\n";
   }
 
-  llvm::errs() << "\nInner Exprs\n";
-  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "InnerExpr")) {
+  llvm::errs() << "\nFinal Exprs\n";
+  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "FinalExpr")) {
+    exp->dumpPretty(*sst::activeASTContext);
+    llvm::errs() << "\n";
+  }
+
+  llvm::errs() << "\nFiltered Exprs\n";
+  llvm::SmallPtrSet<Expr const *, 4> filtered;
+  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "FinalExpr")) {
+    bool found = false;
+
+    if (!exp->getType()->isFundamentalType()) {
+      llvm::errs() << "Type: " << exp->getType().getAsString() << "\n";
+      break;
+    }
+
+    for (auto ptr : filtered) {
+      PrettyPrinter printer;
+      printer.print(exp);
+      auto expstr = printer.str();
+
+      PrettyPrinter printer2;
+      printer2.print(ptr);
+      auto ptrstr = printer2.str();
+
+      if (expstr == ptrstr) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      filtered.insert(exp);
+    }
+  }
+
+  for (auto const &exp : filtered) {
     exp->dumpPretty(*sst::activeASTContext);
     llvm::errs() << "\n";
   }
@@ -266,9 +167,10 @@ auto getLoopVars = forEachDescendant(declStmt(forEach(varDecl().bind("LoopDeclar
 
 } // namespace
 
-void memoizationAutoMatcher(clang::Stmt const *S) {
+void memoizationAutoMatcher(clang::Stmt const *S,
+                            std::string const &namedDecls) {
   if (auto FS = llvm::dyn_cast<clang::ForStmt>(S)) {
-    forStmtVariableAutoMatcher(llvm::dyn_cast<clang::ForStmt>(S));
+    forStmtVariableAutoMatcher(FS, namedDecls);
   } else {
     S->dumpColor();
   }

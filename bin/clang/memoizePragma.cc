@@ -106,17 +106,7 @@ auto getAllRequestedVarDecls(
   // Always match some variables
   memoizationAutoMatcher(SD);
 
-  auto FoundVariables =
-      VariableNames ? matchNamedUsedVariables(SD, *sst::activeASTContext,
-                                              VariableNames.value())
-                    : matchNonLocalUsedVariables(SD, *sst::activeASTContext);
-
-  if (MetaVariableNames) { // Maybe empty
-    matchNamedMetaVariables(SD, *sst::activeASTContext,
-                            MetaVariableNames.value());
-  }
-
-  return FoundVariables;
+  // return FoundVariables;
 }
 
 template <typename Fn>
@@ -205,10 +195,11 @@ void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
   // Captures all of the variables that were matched using the VariableNames_
   // and MetaVariableNames_ members
   std::vector<Variable> Variables;
-  for (auto Var :
-       getAllRequestedVarDecls(S, VariableNames_, MetaVariableNames_)) {
-    Variables.emplace_back(Var, *sst::activeASTContext);
-  }
+  getAllRequestedVarDecls(S, VariableNames_, MetaVariableNames_);
+  // for (auto Var :
+  //      getAllRequestedVarDecls(S, VariableNames_, MetaVariableNames_)) {
+  //   Variables.emplace_back(Var, *sst::activeASTContext);
+  // }
 
   // Name for the new memoization function we are going to write.
   auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
