@@ -43,135 +43,148 @@ Questions? Contact sst-macro-help@sandia.gov
 */
 
 #include "memoizeVariableCaptureAnalyzer.h"
-#include "clang/Analysis/Analyses/ExprMutationAnalyzer.h"
-
+#include "astMatchers.h"
 #include "clangGlobals.h"
 #include "util.h"
-
-#include <optional>
 
 namespace {
 using namespace clang;
 using namespace ast_matchers;
 
-void forStmtVariableAutoMatcher(clang::ForStmt const *FS,
-                                std::string const &namedDeclsToCapture) {
-  // clang-format off
-  /*
-   *  Get all the Variables declared in our ForStmt that we care about
-   */
-  auto getLoopVarsOrAnything = anyOf(
-         forEachDescendant(
-           declStmt(forEach(varDecl().bind("Declared")))
-         ),
-         anything()
-       );
+bool isArithmeticTypeOrPtr(clang::Expr const *expr) {
+  if (expr->getType()->isArithmeticType()) {
+    return true;
+  }
 
-  auto dependsOnLoopDeclaredVar = findAll(
-          declRefExpr(to(varDecl(equalsBoundNode("Declared"))))
-       );
+  return false;
+}
 
-  auto getConditionExpr = hasCondition(expr().bind("ConditionExpr"));
+auto filterExprs(llvm::SmallPtrSet<Expr const *, 4> const &C) {
 
-  auto getAllConditions = findAll(
-      stmt(anyOf(forStmt(getConditionExpr), ifStmt(getConditionExpr),
-                 whileStmt(getConditionExpr), doStmt(getConditionExpr))));
+  auto getSpelling = [](Expr const *e) {
+    std::string str;
+    clang::PrintingPolicy Policy(*sst::activeLangOpts);
+    llvm::raw_string_ostream os(str);
+    e->printPretty(os, nullptr, Policy);
+    return str;
+  };
+
+  llvm::SmallPtrSet<Expr const *, 4> out;
+  llvm::SmallSet<std::string, 4> strings;
+
+  for (auto expr : C) {
+    if (!isArithmeticTypeOrPtr(expr)) {
+      continue;
+    }
+
+    auto expr_str = getSpelling(expr);
+    if (!strings.count(expr_str)) {
+      out.insert(expr);
+      strings.insert(expr_str);
+    }
+  }
+
+  return out;
+}
+
+auto forStmtVariableAutoMatcher(clang::ForStmt const *FS) {
 
   auto hasMatchingAncestorExpr = [](std::string const &str) {
     return hasAncestor(expr(equalsBoundNode(str)));
   };
 
-  auto getNestedConditionExprs = forEachDescendant(
+  // clang-format off
+  auto getConditionExpr = hasCondition(expr().bind("ConditionExpr"));
+
+  auto getConditionExprs = findAll(stmt(anyOf(
+         forStmt(getConditionExpr), 
+         ifStmt(getConditionExpr),
+         whileStmt(getConditionExpr), 
+         switchStmt(getConditionExpr), 
+         conditionalOperator(getConditionExpr), 
+         binaryConditionalOperator(getConditionExpr), 
+         doStmt(getConditionExpr)
+       )));
+
+  auto getLoopVarsOrAnything = anyOf(
+         forEachDescendant(declStmt(forEach(varDecl().bind("Declared")))),
+         anything()
+       );
+
+  auto dependsOnLoopDeclaredVar = 
+    findAll(declRefExpr(to(varDecl(equalsBoundNode("Declared")))));
+
+  auto getMatchingExprs = forEachDescendant(
          expr(
+           unless(dependsOnLoopDeclaredVar),
            anyOf(
-             equalsBoundNode("ConditionExpr"),
-             hasMatchingAncestorExpr("ConditionExpr")
-           ),
-           unless(dependsOnLoopDeclaredVar)
+             hasMatchingAncestorExpr("ConditionExpr"),
+             equalsBoundNode("ConditionExpr")
+           )
          ).bind("InnerExpr")
        );
 
+  auto blackListExprs = hasAncestor(arraySubscriptExpr());
+
   auto filterForTopMatch = forEachDescendant(
-         expr(
-           equalsBoundNode("InnerExpr"),
-           unless(hasMatchingAncestorExpr("InnerExpr"))
-         ).bind("FinalExpr")
+         expr( 
+           anyOf( // Preserves all inner expressions for anaylsis later
+             expr(
+               unless(hasMatchingAncestorExpr("InnerExpr")),
+               unless(blackListExprs),
+               equalsBoundNode("InnerExpr")
+             ).bind("FinalExpr"),
+             expr(
+               equalsBoundNode("InnerExpr")
+             )
+           )
+         )
        );
 
   auto BN = match(
-      stmt(
+      forStmt(
+        getConditionExprs,
         getLoopVarsOrAnything,
-        getAllConditions,
-        getNestedConditionExprs,
+        getMatchingExprs,
         filterForTopMatch
-      ), *FS, *sst::activeASTContext); // FS is a ForStmt
+      ), *FS, *sst::activeASTContext);
   // clang-format on
 
-  llvm::errs() << "\n";
-  // FS->dumpPretty(*sst::activeASTContext);
   FS->dumpColor();
-  llvm::errs() << "\nDeclared\n";
-  for (auto const &VD : ::detail::toPtrSet<VarDecl>(BN, "Declared")) {
-    llvm::errs() << VD->getNameAsString() << ", ";
-  }
+  return matchers::toPtrSet<Expr>(BN, "FinalExpr");
+}
 
-  llvm::errs() << "\n\nConditionsExpr\n";
-  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "ConditionExpr")) {
-    exp->dumpPretty(*sst::activeASTContext);
-    llvm::errs() << "\n";
-  }
+auto getDeclRefExprsToVariables(clang::Stmt const *S,
+                                std::string const &namedDeclsRegex) {
+  auto matches =
+      match(findAll(declRefExpr(to(varDecl(matchesName(namedDeclsRegex))))
+                        .bind("DeclRefs")),
+            *S, *sst::activeASTContext);
 
-  llvm::errs() << "\nFinal Exprs\n";
-  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "FinalExpr")) {
-    exp->dumpPretty(*sst::activeASTContext);
-    llvm::errs() << "\n";
-  }
-
-  llvm::errs() << "\nFiltered Exprs\n";
-  llvm::SmallPtrSet<Expr const *, 4> filtered;
-  for (auto const &exp : ::detail::toPtrSet<Expr>(BN, "FinalExpr")) {
-    bool found = false;
-
-    if (!exp->getType()->isFundamentalType()) {
-      llvm::errs() << "Type: " << exp->getType().getAsString() << "\n";
-      break;
-    }
-
-    for (auto ptr : filtered) {
-      PrettyPrinter printer;
-      printer.print(exp);
-      auto expstr = printer.str();
-
-      PrettyPrinter printer2;
-      printer2.print(ptr);
-      auto ptrstr = printer2.str();
-
-      if (expstr == ptrstr) {
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      filtered.insert(exp);
-    }
-  }
-
-  for (auto const &exp : filtered) {
-    exp->dumpPretty(*sst::activeASTContext);
-    llvm::errs() << "\n";
-  }
-
-  llvm::errs() << "\n\n\n";
+  return matchers::toPtrSet<Expr>(matches, "DeclRefs");
 }
 
 } // namespace
 
-void memoizationAutoMatcher(clang::Stmt const *S,
-                            std::string const &namedDecls) {
-  if (auto FS = llvm::dyn_cast<clang::ForStmt>(S)) {
-    forStmtVariableAutoMatcher(FS, namedDecls);
-  } else {
-    S->dumpColor();
+llvm::SmallPtrSet<Expr const *, 4>
+memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
+                       bool AutoCapture) {
+
+  llvm::SmallPtrSet<Expr const *, 4> results;
+
+  if (!namedDeclsRegex.empty()) {
+    auto tmp = getDeclRefExprsToVariables(S, namedDeclsRegex);
+    results.insert(tmp.begin(), tmp.end());
   }
+
+  if (AutoCapture) {
+    if (auto FS = llvm::dyn_cast<clang::ForStmt>(S)) {
+      auto tmp = forStmtVariableAutoMatcher(FS);
+      results.insert(tmp.begin(), tmp.end());
+    } else {
+      S->dumpColor();
+    }
+  }
+
+  return filterExprs(results);
 }

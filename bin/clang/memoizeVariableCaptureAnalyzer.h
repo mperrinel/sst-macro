@@ -45,51 +45,15 @@ Questions? Contact sst-macro-help@sandia.gov
 #ifndef bin_clang_memoizeVariableCaputreAnalyzer_H
 #define bin_clang_memoizeVariableCaputreAnalyzer_H
 
-#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clangHeaders.h"
+#include <string>
 
-namespace detail {
-// Mainly used to get a unique list of ast Nodes since
-template <typename T, unsigned N>
-auto toPtrSet(
-    llvm::SmallVector<clang::ast_matchers::BoundNodes, N> const &Nodes,
-    std::string const &ID) {
-  llvm::SmallPtrSet<T const *, 4> VarDecls;
-
-  for (auto const &Match : Nodes) {
-    if (auto Var = Match.template getNodeAs<T>(ID)) {
-      VarDecls.insert(Var);
-    }
-  }
-
-  return VarDecls;
-}
-
-template <typename Container> std::string makeNameRegex(Container const &C) {
-  std::string NameRegex;
-  auto first = true;
-  for (auto const &Name : C) {
-    NameRegex += ((first) ? "" : "|") + Name;
-    first = false;
-  }
-
-  return NameRegex;
-}
-} // namespace detail
-
-inline clang::NamedDecl const *getParentDecl(clang::Stmt const *S,
-                                             clang::ASTContext &Ctx) {
-  using namespace clang::ast_matchers;
-  // clang-format off
-  return selectFirst<clang::NamedDecl>("ID", match(
-        stmt(
-          equalsNode(S),
-          hasAncestor(
-            namedDecl().bind("ID")
-          )
-        ), *S, Ctx));
-  // clang-format on
-}
-
-void memoizationAutoMatcher(clang::Stmt const *S, std::string const& namedDecls = "");
+/*
+ *
+ */
+llvm::SmallPtrSet<clang::Expr const *, 4>
+memoizationAutoMatcher(clang::Stmt const *S,
+                       std::string const &namedDeclsRegex,
+                       bool AutoCapture);
 
 #endif //  bin_clang_memoizeVariableCaputreAnalyzer_H

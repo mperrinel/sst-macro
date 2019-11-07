@@ -43,11 +43,12 @@ Questions? Contact sst-macro-help@sandia.gov
 */
 
 #include "memoizePragma.h"
+#include "astMatchers.h"
 #include "clangGlobals.h"
 #include "memoizeVariableCaptureAnalyzer.h"
 
 namespace {
-
+/*
 template <typename T> T getNonNull(T t) {
   if (t == nullptr) {
     llvm::errs() << "Tried to access null pointer in memoizePragma.cc";
@@ -56,7 +57,9 @@ template <typename T> T getNonNull(T t) {
 
   return t;
 }
+*/
 
+/*
 std::string cleanPath(std::string const &p) {
   // Don't care if it doesn't work on Windows
   auto root_end = p.find_last_of('/') + 1;
@@ -69,7 +72,9 @@ std::string cleanPath(std::string const &p) {
 
   return out;
 }
+*/
 
+/*
 std::string generateUniqueFunctionName(clang::SourceLocation const &Loc,
                                        clang::NamedDecl const *Decl,
                                        std::string Prefix) {
@@ -83,6 +88,7 @@ std::string generateUniqueFunctionName(clang::SourceLocation const &Loc,
 
   return Prefix;
 }
+*/
 
 auto parseKeyword(PragmaArgMap const &Strings, std::string const &Key) {
   using ContainerType = std::vector<std::string>;
@@ -97,18 +103,18 @@ auto parseKeyword(PragmaArgMap const &Strings, std::string const &Key) {
   return std::optional<ContainerType>();
 }
 
-// This list will need to extend overtime
 template <typename StmtDecl, typename Container>
-auto getAllRequestedVarDecls(
-    StmtDecl const *SD, std::optional<Container> const &VariableNames,
-    std::optional<Container> const &MetaVariableNames) {
+auto getAllExprs(StmtDecl const *SD,
+                 std::optional<Container> const &VariableNames,
+                 bool AutoCapture) {
 
-  // Always match some variables
-  memoizationAutoMatcher(SD);
+  std::string NameRegex =
+      (VariableNames) ? ::matchers::makeNameRegex(*VariableNames) : "";
 
-  // return FoundVariables;
+  return memoizationAutoMatcher(SD, NameRegex, AutoCapture);
 }
 
+/*
 template <typename Fn>
 std::string commaSepVars(std::vector<memoize::Variable> const &Vars, Fn &&f) {
   std::string out;
@@ -123,13 +129,17 @@ std::string commaSepVars(std::vector<memoize::Variable> const &Vars, Fn &&f) {
 
   return out;
 }
+*/
 
+/*
 std::string printCaptureBody(std::vector<memoize::Variable> const &Variables) {
   return "memoize::print_types(" +
          commaSepVars(Variables, [](auto const &V) { return V.getName(); }) +
          ");";
 }
+*/
 
+/*
 template <typename StmtDecl>
 std::function<std::string(std::vector<memoize::Variable> const &)>
 getFuncBodyGenerator(StmtDecl const *SD,
@@ -146,86 +156,99 @@ getFuncBodyGenerator(StmtDecl const *SD,
 
   return {};
 }
+*/
 
+/*
 clang::NamedDecl const *getNonNullParentDecl(clang::Stmt const *S) {
-  return getNonNull(getParentDecl(S, *sst::activeASTContext));
+  return getNonNull(matchers::getParentDecl(S, *sst::activeASTContext));
 }
+*/
 
 } // namespace
 
 namespace memoize {
+/*
 MemoizationStrings::MemoizationStrings(
-    std::string const &name, std::vector<Variable> const &Variables,
-    std::function<std::string(std::vector<Variable> const &)> fn) {
+  std::string const &name, std::vector<Variable> const &Variables,
+  std::function<std::string(std::vector<Variable> const &)> fn) {
 
-  std::string externC = sst::activeLangOpts->CPlusPlus ? "extern \"C\" " : "";
+std::string externC = sst::activeLangOpts->CPlusPlus ? "extern \"C\" " : "";
 
-  decleration_ =
-      externC + "void " + name + "(" +
-      commaSepVars(Variables, [](auto const &V) { return V.getDeclType(); }) +
-      ");";
+decleration_ =
+    externC + "void " + name + "(" +
+    commaSepVars(Variables, [](auto const &V) { return V.getDeclType(); }) +
+    ");";
 
-  callsite_ = name + "(" +
+callsite_ = name + "(" +
+            commaSepVars(Variables,
+                         [](auto const &V) { return V.getQualifiedName(); }) +
+            ");";
+
+// C++ global file always gets extern "C"
+definition_ = "extern \"C\" void " + name + "(" +
               commaSepVars(Variables,
-                           [](auto const &V) { return V.getQualifiedName(); }) +
-              ");";
-
-  // C++ global file always gets extern "C"
-  definition_ = "extern \"C\" void " + name + "(" +
-                commaSepVars(Variables,
-                             [](auto const &V) {
-                               return V.getDeclType() + " " + V.getName();
-                             }) +
-                "){" + fn(Variables) + "}";
+                           [](auto const &V) {
+                             return V.getDeclType() + " " + V.getName();
+                           }) +
+              "){" + fn(Variables) + "}";
 }
+*/
 
 SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation Loc,
                                    clang::CompilerInstance &CI,
                                    PragmaArgMap &&PragmaStrings)
     : VariableNames_(parseKeyword(PragmaStrings, "variables")),
-      MetaVariableNames_(parseKeyword(PragmaStrings, "meta_variables")) {}
+      ExtraExpressions_(parseKeyword(PragmaStrings, "extra_exressions")) {
+  if (VariableNames_) {
+    auto &strs = *VariableNames_;
+    if (auto ac = std::find(strs.begin(), strs.end(), "auto"); 
+        ac == strs.end()) {
+      DoAutoCapture = false;
+    } else {
+      strs.erase(ac); // Don't actually look for a variable named "auto"
+    }
+  }
+}
 
 void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
                                 PragmaConfig &Cfg) {
+
   // Since we are a statement we will need to find the decl in which we were
   // declared, if it doesn't have a name then this throws.  Usually that would
   // mean it was the translation unit decl.
-  auto ParentDecl = getNonNullParentDecl(S);
+  // auto ParentDecl = getNonNullParentDecl(S);
 
-  // Captures all of the variables that were matched using the VariableNames_
-  // and MetaVariableNames_ members
-  std::vector<Variable> Variables;
-  getAllRequestedVarDecls(S, VariableNames_, MetaVariableNames_);
-  // for (auto Var :
-  //      getAllRequestedVarDecls(S, VariableNames_, MetaVariableNames_)) {
-  //   Variables.emplace_back(Var, *sst::activeASTContext);
-  // }
-
-  // Name for the new memoization function we are going to write.
-  auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
-  auto FuncBodyGen = getFuncBodyGenerator(S, CaptureType_);
-  Strings_ = MemoizationStrings(FuncName, Variables, FuncBodyGen);
-
-  R.InsertTextBefore(getStart(ParentDecl), Strings_.getDecleration() + "\n");
-  R.InsertTextBefore(getStart(S), Strings_.getCallsite() + "\n");
-} // namespace memoize
-
-void SSTMemoizePragma::activate(clang::Decl *D, clang::Rewriter &R,
-                                PragmaConfig &Cfg) { }
-
-void SSTMemoizePragma::deactivate(PragmaConfig &cfg) {
-  auto &vec = cfg.globalCppFunctionsToWrite;
-  auto pragma = static_cast<SSTPragma *>(this);
-
-  if (std::none_of(vec.begin(), vec.end(), [](auto const &pragma_string) {
-        return pragma_string.second == "#include \"capture.h\"\n";
-      })) {
-    vec.push_back(std::make_pair(pragma, "#include \"capture.h\"\n"));
+  for (auto Expr : getAllExprs(S, VariableNames_, DoAutoCapture)) {
+    Expr->dumpPretty(*sst::activeASTContext);
+    llvm::errs() << "\n";
   }
 
-  vec.push_back(std::make_pair(pragma, Strings_.getDefinition()));
+  // Name for the new memoization function we are going to write.
+  // auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
+  // auto FuncBodyGen = getFuncBodyGenerator(S, CaptureType_);
+  // Strings_ = MemoizationStrings(FuncName, Variables, FuncBodyGen);
+
+  // R.InsertTextBefore(getStart(ParentDecl), Strings_.getDecleration() + "\n");
+  // R.InsertTextBefore(getStart(S), Strings_.getCallsite() + "\n");
+}
+
+void SSTMemoizePragma::activate(clang::Decl *D, clang::Rewriter &R,
+                                PragmaConfig &Cfg) {}
+
+void SSTMemoizePragma::deactivate(PragmaConfig &cfg) {
+  // auto &vec = cfg.globalCppFunctionsToWrite;
+  // if (std::none_of(vec.begin(), vec.end(), [](auto const &pragma_string) {
+  //       return pragma_string.second == "#include \"capture.h\"\n";
+  //     })) {
+  //   vec.push_back(std::make_pair(this, "#include \"capture.h\"\n"));
+  // }
+
+  // vec.push_back(std::make_pair(pragma, Strings_.getDefinition()));
 }
 } // namespace memoize
 
 static PragmaRegister<SSTArgMapPragmaShim, memoize::SSTMemoizePragma, true>
-    annotatePragma("sst", "memoize", pragmas::MEMOIZE);
+    memoizePragma("sst", "memoize", pragmas::MEMOIZE);
+
+static PragmaRegister<SSTArgMapPragmaShim, memoize::SSTMemoizePragma, false>
+    ompMemoizePragma("omp", "parallel", pragmas::MEMOIZE);

@@ -177,6 +177,9 @@ static void tokenToString(const Token& tok, std::ostream& os,
   case tok::kw_for:
     os << "for";
     break;
+  case tok::kw_auto:
+    os << "auto";
+    break;
   case tok::string_literal:
   case tok::numeric_constant:
   {

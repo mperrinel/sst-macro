@@ -42,59 +42,52 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 
-#ifndef bin_clang_memoizePragma_h
-#define bin_clang_memoizePragma_h
+#ifndef bin_clang_ASTMATCHERS_H
+#define bin_clang_ASTMATCHERS_H
 
-#include "pragmas.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
 
-#include <functional>
-#include <optional>
-#include <vector>
+namespace matchers {
+template <typename T, unsigned N>
+auto toPtrSet(
+    llvm::SmallVector<clang::ast_matchers::BoundNodes, N> const &Nodes,
+    std::string const &ID) {
 
-namespace memoize {
+  llvm::SmallPtrSet<T const *, 4> Ts;
 
-/*
-class MemoizationStrings {
-public:
-  MemoizationStrings(
-      std::string const &name, std::vector<Variable> const &Variables,
-      std::function<std::string(std::vector<Variable> const &)> fn);
+  for (auto const &Match : Nodes) {
+    if (auto Var = Match.template getNodeAs<T>(ID)) {
+      Ts.insert(Var);
+    }
+  }
 
-  MemoizationStrings() = default;
+  return Ts;
+}
 
-  std::string const &getDecleration() const { return decleration_; }
-  std::string const &getCallsite() const { return callsite_; }
-  std::string const &getDefinition() const { return definition_; }
+template <typename Container> std::string makeNameRegex(Container const &C) {
+  std::string NameRegex;
+  auto first = true;
+  for (auto const &Name : C) {
+    NameRegex += ((first) ? "" : "|") + Name;
+    first = false;
+  }
 
-private:
-  std::string decleration_;
-  std::string callsite_;
-  std::string definition_;
-};
-*/
+  return NameRegex;
+}
 
-/*
- * Will automatically determine which expressions to capture unless the user
- * provides variables.  If the user provides variables and wants that in
- * addition to automatic capture they should include the word automatic in the
- * list of things to capture.
- *
- *
- */
-class SSTMemoizePragma : public SSTPragma {
-public:
-  SSTMemoizePragma(clang::SourceLocation Loc, clang::CompilerInstance &CI,
-                   PragmaArgMap &&PragmaStrings);
+inline clang::NamedDecl const *getParentDecl(clang::Stmt const *S,
+                                             clang::ASTContext &Ctx) {
+  using namespace clang::ast_matchers;
+  // clang-format off
+  return selectFirst<clang::NamedDecl>("ID", match(
+        stmt(
+          equalsNode(S),
+          hasAncestor(
+            namedDecl().bind("ID")
+          )
+        ), *S, Ctx));
+  // clang-format on
+}
 
-  void activate(clang::Stmt *S, clang::Rewriter &R, PragmaConfig &Cfg) override;
-  void activate(clang::Decl *D, clang::Rewriter &R, PragmaConfig &Cfg) override;
-  void deactivate(PragmaConfig &cfg) override;
-
-private:
-  std::optional<std::vector<std::string>> VariableNames_;
-  std::optional<std::vector<std::string>> ExtraExpressions_;
-  bool DoAutoCapture = true;
-};
-} // namespace memoize
-
-#endif // bin_clang_memoizePragma_h
+} // namespace matchers
+#endif //  bin_clang_ASTMATCHERS_H
