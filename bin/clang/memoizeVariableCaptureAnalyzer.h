@@ -48,9 +48,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #include "clangHeaders.h"
 #include <string>
 
-/*
- *
- */
+
 llvm::SmallPtrSet<clang::Expr const *, 4>
 memoizationAutoMatcher(clang::Stmt const *S,
                        std::string const &namedDeclsRegex,

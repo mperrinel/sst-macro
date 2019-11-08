@@ -43,6 +43,8 @@ Questions? Contact sst-macro-help@sandia.gov
 */
 
 #include "util.h"
+#include "clangGlobals.h" 
+
 #include <sstream>
 
 using namespace clang;
@@ -73,6 +75,31 @@ isCxx(const std::string& filename){
   bool valid = suffix4 == ".cpp" || suffix3 == ".cc" || suffix4 == ".cxx";
   return valid;
 }
+
+std::string getStmtSpelling(clang::Stmt const *s, 
+          clang::LangOptions const* LangOpts){
+
+  auto &LO = (LangOpts == nullptr) ? *sst::activeLangOpts : *LangOpts; 
+  clang::PrintingPolicy Policy(LO);
+
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  s->printPretty(os, nullptr, Policy);
+  return str;
+};
+
+std::string 
+getExprDesugaredTypeSpelling(clang::Expr const *e, 
+                             clang::LangOptions const* LangOpts){
+
+  auto &LO = (LangOpts == nullptr) ? *sst::activeLangOpts : *LangOpts; 
+  clang::PrintingPolicy Policy(LO);
+
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  e->getType().getDesugaredType(*sst::activeASTContext).print(os,Policy);
+  return str;
+};
 
 void
 errorAbort(SourceLocation loc, CompilerInstance &CI, const std::string &error)

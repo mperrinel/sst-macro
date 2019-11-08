@@ -103,6 +103,7 @@ libclang17_a_SOURCES = \
 	clang/annotatePragma.cc \
 	clang/memoizePragma.cc \
 	clang/memoizeVariableCaptureAnalyzer.cc \
+	clang/astMatchers.cc \
 	clang/ompPuppetizePragma.cc \
 	clang/memoizeVariable.cc
 

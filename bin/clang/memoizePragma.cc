@@ -46,20 +46,10 @@ Questions? Contact sst-macro-help@sandia.gov
 #include "astMatchers.h"
 #include "clangGlobals.h"
 #include "memoizeVariableCaptureAnalyzer.h"
+#include "util.h"
 
 namespace {
-/*
-template <typename T> T getNonNull(T t) {
-  if (t == nullptr) {
-    llvm::errs() << "Tried to access null pointer in memoizePragma.cc";
-    exit(EXIT_FAILURE);
-  }
 
-  return t;
-}
-*/
-
-/*
 std::string cleanPath(std::string const &p) {
   // Don't care if it doesn't work on Windows
   auto root_end = p.find_last_of('/') + 1;
@@ -72,9 +62,7 @@ std::string cleanPath(std::string const &p) {
 
   return out;
 }
-*/
 
-/*
 std::string generateUniqueFunctionName(clang::SourceLocation const &Loc,
                                        clang::NamedDecl const *Decl,
                                        std::string Prefix) {
@@ -88,7 +76,6 @@ std::string generateUniqueFunctionName(clang::SourceLocation const &Loc,
 
   return Prefix;
 }
-*/
 
 auto parseKeyword(PragmaArgMap const &Strings, std::string const &Key) {
   using ContainerType = std::vector<std::string>;
@@ -114,86 +101,25 @@ auto getAllExprs(StmtDecl const *SD,
   return memoizationAutoMatcher(SD, NameRegex, AutoCapture);
 }
 
-/*
 template <typename Fn>
-std::string commaSepVars(std::vector<memoize::Variable> const &Vars, Fn &&f) {
+std::string
+parseExprString(std::vector<memoize::ExpressionStrings> const &Exprs, Fn &&f) {
   std::string out;
 
   bool isFirst = true;
-  for (auto const &Var : Vars) {
+  for (auto const &Expr : Exprs) {
     std::string comma = (isFirst) ? "" : ", ";
     isFirst = false;
 
-    out += comma + f(Var);
+    out += comma + f(Expr);
   }
 
   return out;
 }
-*/
-
-/*
-std::string printCaptureBody(std::vector<memoize::Variable> const &Variables) {
-  return "memoize::print_types(" +
-         commaSepVars(Variables, [](auto const &V) { return V.getName(); }) +
-         ");";
-}
-*/
-
-/*
-template <typename StmtDecl>
-std::function<std::string(std::vector<memoize::Variable> const &)>
-getFuncBodyGenerator(StmtDecl const *SD,
-                     std::optional<std::string> const &FunctionType) {
-
-  auto type = FunctionType.value_or("print"); // print is the default;
-  if (type == "print") {
-    return printCaptureBody;
-  }
-
-  errorAbort(SD, *sst::activeCompiler,
-             "Memoize Type(" + type +
-                 ") was not reconized in SSTMemoizePragma.\n");
-
-  return {};
-}
-*/
-
-/*
-clang::NamedDecl const *getNonNullParentDecl(clang::Stmt const *S) {
-  return getNonNull(matchers::getParentDecl(S, *sst::activeASTContext));
-}
-*/
 
 } // namespace
 
 namespace memoize {
-/*
-MemoizationStrings::MemoizationStrings(
-  std::string const &name, std::vector<Variable> const &Variables,
-  std::function<std::string(std::vector<Variable> const &)> fn) {
-
-std::string externC = sst::activeLangOpts->CPlusPlus ? "extern \"C\" " : "";
-
-decleration_ =
-    externC + "void " + name + "(" +
-    commaSepVars(Variables, [](auto const &V) { return V.getDeclType(); }) +
-    ");";
-
-callsite_ = name + "(" +
-            commaSepVars(Variables,
-                         [](auto const &V) { return V.getQualifiedName(); }) +
-            ");";
-
-// C++ global file always gets extern "C"
-definition_ = "extern \"C\" void " + name + "(" +
-              commaSepVars(Variables,
-                           [](auto const &V) {
-                             return V.getDeclType() + " " + V.getName();
-                           }) +
-              "){" + fn(Variables) + "}";
-}
-*/
-
 SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation Loc,
                                    clang::CompilerInstance &CI,
                                    PragmaArgMap &&PragmaStrings)
@@ -201,7 +127,7 @@ SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation Loc,
       ExtraExpressions_(parseKeyword(PragmaStrings, "extra_exressions")) {
   if (VariableNames_) {
     auto &strs = *VariableNames_;
-    if (auto ac = std::find(strs.begin(), strs.end(), "auto"); 
+    if (auto ac = std::find(strs.begin(), strs.end(), "auto");
         ac == strs.end()) {
       DoAutoCapture = false;
     } else {
@@ -210,23 +136,81 @@ SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation Loc,
   }
 }
 
+ExpressionStrings::ExpressionStrings(clang::Expr const *e)
+    : spelling(getStmtSpelling(e)) {
+  if (sst::activeLangOpts->CPlusPlus) {
+    cppType = getExprDesugaredTypeSpelling(e);
+  } else {
+    cType = getExprDesugaredTypeSpelling(e);
+
+    auto cppLO = clang::LangOptions();
+    cppLO.CPlusPlus = true;
+    cppType = getExprDesugaredTypeSpelling(e, &cppLO);
+  }
+}
+std::string ExpressionStrings::getExpressionLabel() const {
+  return "\"" + cType.value_or(cppType) + " " + spelling + "\"";
+}
+std::string ExpressionStrings::getSrcFileType() const {
+  return cType.value_or(cppType);
+}
+std::string const &ExpressionStrings::getCppType() const { return cppType; }
+std::string const &ExpressionStrings::getExprSpelling() const {
+  return spelling;
+}
+
 void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
                                 PragmaConfig &Cfg) {
 
-  // Since we are a statement we will need to find the decl in which we were
-  // declared, if it doesn't have a name then this throws.  Usually that would
-  // mean it was the translation unit decl.
-  // auto ParentDecl = getNonNullParentDecl(S);
-
+  S->dumpPretty(*sst::activeASTContext);
   for (auto Expr : getAllExprs(S, VariableNames_, DoAutoCapture)) {
-    Expr->dumpPretty(*sst::activeASTContext);
-    llvm::errs() << "\n";
+    ExprStrs_.emplace_back(Expr);
   }
 
-  // Name for the new memoization function we are going to write.
-  // auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
+  auto ParentDecl = getNonNull(matchers::getParentDecl(S));
+  auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
+
+  llvm::errs() << "\nCaptured Expressions:\n"
+               << parseExprString(ExprStrs_,
+                                  [](ExpressionStrings const &es) {
+                                    return es.getExprSpelling() + "\n";
+                                  })
+               << "\n";
+  llvm::errs() << "void " << FuncName << "("
+               << parseExprString(ExprStrs_,
+                                  [](ExpressionStrings const &es) {
+                                    return "char const*, " +
+                                           es.getSrcFileType();
+                                  })
+               << ");\n\n";
+  llvm::errs() << FuncName << "("
+               << parseExprString(ExprStrs_,
+                                  [](ExpressionStrings const &es) {
+                                    return es.getExpressionLabel() + ", " +
+                                           es.getExprSpelling();
+                                  })
+               << ");\n\n";
+  llvm::errs()
+      << "void " << FuncName << "("
+      << parseExprString(ExprStrs_,
+                         [var = 0](ExpressionStrings const &es) mutable {
+                           auto v1 =
+                               "char const* v" + std::to_string(var++) + ", ";
+                           auto v2 =
+                               es.getCppType() + " v" + std::to_string(var++);
+                           return v1 + v2;
+                         })
+      << "){\n\tthe_sst_function_that_i_made("
+      << "\"" << FuncName << "\", "
+      << parseExprString(ExprStrs_,
+                         [var = 0](ExpressionStrings const &es) mutable {
+                           auto v1 = "v" + std::to_string(var++) + ", ";
+                           auto v2 = "v" + std::to_string(var++);
+                           return v1 + v2;
+                         })
+
+      << ");\n}\n\n\n\n";
   // auto FuncBodyGen = getFuncBodyGenerator(S, CaptureType_);
-  // Strings_ = MemoizationStrings(FuncName, Variables, FuncBodyGen);
 
   // R.InsertTextBefore(getStart(ParentDecl), Strings_.getDecleration() + "\n");
   // R.InsertTextBefore(getStart(S), Strings_.getCallsite() + "\n");

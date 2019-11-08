@@ -92,6 +92,35 @@ struct PrettyPrinter
   std::string baseStr;
 };
 
+template <typename T> 
+T getNonNull(T t) {
+  static_assert(std::is_pointer<T>::value, 
+                "getNonNull expects pointer arguments");
+
+  if (t == nullptr) {
+    llvm::errs() << "Tried to access null pointer in getNonNull\n";
+    exit(EXIT_FAILURE);
+  }
+
+  return t;
+}
+
+/** getStmtSpelling will print the stmt in a way that is consistent with the
+ * language specified by the second argument.  If default or nullptr is passed
+ * is uses the globally stored language option.
+ **/
+std::string getStmtSpelling(clang::Stmt const *s, 
+                            clang::LangOptions const* = nullptr); 
+
+/** getExprDesugaredTypeSpelling will return a string with the type of the
+ * expresision in a way that is consistent with the language specified by the
+ * second argument.  If default or nullptr is passed is uses the globally
+ * stored language option.
+ **/
+std::string getExprDesugaredTypeSpelling(clang::Expr const *e, 
+                                         clang::LangOptions const* = nullptr); 
+
+
 bool isCxx(const std::string& filename);
 bool isValidSrc(const std::string& filename);
 

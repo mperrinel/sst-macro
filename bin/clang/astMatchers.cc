@@ -42,40 +42,22 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 
-#ifndef bin_clang_ASTMATCHERS_H
-#define bin_clang_ASTMATCHERS_H
-
-#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "astMatchers.h"
+#include "clangGlobals.h"
 
 namespace matchers {
-template <typename T, unsigned N>
-auto toPtrSet(
-    llvm::SmallVector<clang::ast_matchers::BoundNodes, N> const &Nodes,
-    std::string const &ID) {
+using namespace clang;
+using namespace clang::ast_matchers;
 
-  llvm::SmallPtrSet<T const *, 4> Ts;
-
-  for (auto const &Match : Nodes) {
-    if (auto Var = Match.template getNodeAs<T>(ID)) {
-      Ts.insert(Var);
-    }
-  }
-
-  return Ts;
+NamedDecl const *getParentDecl(Stmt const *S){
+  // clang-format off
+  return selectFirst<NamedDecl>("ID", match(
+        stmt(
+          equalsNode(S),
+          hasAncestor(
+            namedDecl().bind("ID")
+          )
+        ), *S, *sst::activeASTContext));
+  // clang-format on
 }
-
-template <typename Container> std::string makeNameRegex(Container const &C) {
-  std::string NameRegex;
-  auto first = true;
-  for (auto const &Name : C) {
-    NameRegex += ((first) ? "" : "|") + Name;
-    first = false;
-  }
-
-  return NameRegex;
-}
-
-clang::NamedDecl const *getParentDecl(clang::Stmt const *S); 
-
 } // namespace matchers
-#endif //  bin_clang_ASTMATCHERS_H

@@ -48,10 +48,27 @@ Questions? Contact sst-macro-help@sandia.gov
 #include "util.h"
 
 namespace {
+
 using namespace clang;
 using namespace ast_matchers;
 
-bool isArithmeticTypeOrPtr(clang::Expr const *expr) {
+bool exprToLiteral(Expr const *expr) {
+  auto noCastExpr = expr->IgnoreCasts();
+
+  switch (noCastExpr->getStmtClass()) {
+  case (Stmt::IntegerLiteralClass):
+  case (Stmt::FloatingLiteralClass):
+  case (Stmt::CharacterLiteralClass):
+  case (Stmt::CXXBoolLiteralExprClass):
+  case (Stmt::ImaginaryLiteralClass):
+  case (Stmt::StringLiteralClass):
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool isArithmeticType(clang::Expr const *expr) {
   if (expr->getType()->isArithmeticType()) {
     return true;
   }
@@ -60,7 +77,6 @@ bool isArithmeticTypeOrPtr(clang::Expr const *expr) {
 }
 
 auto filterExprs(llvm::SmallPtrSet<Expr const *, 4> const &C) {
-
   auto getSpelling = [](Expr const *e) {
     std::string str;
     clang::PrintingPolicy Policy(*sst::activeLangOpts);
@@ -73,7 +89,8 @@ auto filterExprs(llvm::SmallPtrSet<Expr const *, 4> const &C) {
   llvm::SmallSet<std::string, 4> strings;
 
   for (auto expr : C) {
-    if (!isArithmeticTypeOrPtr(expr)) {
+    if (!isArithmeticType(expr) || exprToLiteral(expr) ||
+        llvm::isa<CallExpr>(expr)) {
       continue;
     }
 
@@ -87,27 +104,37 @@ auto filterExprs(llvm::SmallPtrSet<Expr const *, 4> const &C) {
   return out;
 }
 
-auto forStmtVariableAutoMatcher(clang::ForStmt const *FS) {
+auto bindNestedDeclaredVarDecls(std::string const &str) {
+  return forEachDescendant(declStmt(forEach(varDecl().bind(str))));
+};
 
-  auto hasMatchingAncestorExpr = [](std::string const &str) {
-    return hasAncestor(expr(equalsBoundNode(str)));
-  };
+auto bindConditionExpr(std::string const &str) {
+  return hasCondition(expr().bind(str));
+};
+
+auto hasBoundAncestorExpr(std::string const &str) {
+  return hasAncestor(expr(equalsBoundNode(str)));
+};
+
+// clang-format off
+auto bindAllConditionExprs = [](std::string const& str){
+  return findAll(stmt(anyOf(
+       forStmt(bindConditionExpr(str)), 
+       ifStmt(bindConditionExpr(str)),
+       whileStmt(bindConditionExpr(str)), 
+       switchStmt(bindConditionExpr(str)), 
+       conditionalOperator(bindConditionExpr(str)), 
+       binaryConditionalOperator(bindConditionExpr(str)), 
+       doStmt(bindConditionExpr(str))
+     )));
+};
+// clang-format on
+
+auto forStmtConditionCaptures(clang::Stmt const *FS) {
 
   // clang-format off
-  auto getConditionExpr = hasCondition(expr().bind("ConditionExpr"));
-
-  auto getConditionExprs = findAll(stmt(anyOf(
-         forStmt(getConditionExpr), 
-         ifStmt(getConditionExpr),
-         whileStmt(getConditionExpr), 
-         switchStmt(getConditionExpr), 
-         conditionalOperator(getConditionExpr), 
-         binaryConditionalOperator(getConditionExpr), 
-         doStmt(getConditionExpr)
-       )));
-
   auto getLoopVarsOrAnything = anyOf(
-         forEachDescendant(declStmt(forEach(varDecl().bind("Declared")))),
+         bindNestedDeclaredVarDecls("Declared"),
          anything()
        );
 
@@ -118,7 +145,7 @@ auto forStmtVariableAutoMatcher(clang::ForStmt const *FS) {
          expr(
            unless(dependsOnLoopDeclaredVar),
            anyOf(
-             hasMatchingAncestorExpr("ConditionExpr"),
+             hasBoundAncestorExpr("ConditionExpr"),
              equalsBoundNode("ConditionExpr")
            )
          ).bind("InnerExpr")
@@ -130,27 +157,30 @@ auto forStmtVariableAutoMatcher(clang::ForStmt const *FS) {
          expr( 
            anyOf( // Preserves all inner expressions for anaylsis later
              expr(
-               unless(hasMatchingAncestorExpr("InnerExpr")),
+               unless(hasBoundAncestorExpr("InnerExpr")),
                unless(blackListExprs),
                equalsBoundNode("InnerExpr")
              ).bind("FinalExpr"),
              expr(
                equalsBoundNode("InnerExpr")
-             )
+             ),
+             expr(
+               callExpr(),
+               unless(dependsOnLoopDeclaredVar)
+             ).bind("FinalExpr")
            )
          )
        );
 
   auto BN = match(
-      forStmt(
-        getConditionExprs,
+      stmt(
+        bindAllConditionExprs("ConditionExpr"),
         getLoopVarsOrAnything,
         getMatchingExprs,
         filterForTopMatch
       ), *FS, *sst::activeASTContext);
   // clang-format on
 
-  FS->dumpColor();
   return matchers::toPtrSet<Expr>(BN, "FinalExpr");
 }
 
@@ -162,6 +192,38 @@ auto getDeclRefExprsToVariables(clang::Stmt const *S,
             *S, *sst::activeASTContext);
 
   return matchers::toPtrSet<Expr>(matches, "DeclRefs");
+}
+
+auto getLoopVarDeclsInitializers(clang::Stmt const *S) {
+  // clang-format off
+  auto matches =
+      match(
+        stmt(
+          bindNestedDeclaredVarDecls("Declared"),
+          bindAllConditionExprs("ConditionExpr"),
+          forEachDescendant(
+            declRefExpr(
+              hasBoundAncestorExpr("ConditionExpr"),
+              to(
+                varDecl(
+                  hasInitializer(
+                    expr(
+                      unless(
+                        hasDescendant(
+                          declRefExpr(to(varDecl(equalsBoundNode("Declared"))))
+                        )
+                      )
+                    ).bind("ExternalInitializer")
+                  ),
+                  equalsBoundNode("Declared")
+                )
+              )
+            )
+          )
+        ), *S, *sst::activeASTContext);
+  // clang-format on
+
+  return matchers::toPtrSet<Expr>(matches, "ExternalInitializer");
 }
 
 } // namespace
@@ -178,12 +240,11 @@ memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
   }
 
   if (AutoCapture) {
-    if (auto FS = llvm::dyn_cast<clang::ForStmt>(S)) {
-      auto tmp = forStmtVariableAutoMatcher(FS);
-      results.insert(tmp.begin(), tmp.end());
-    } else {
-      S->dumpColor();
-    }
+    auto tmp = forStmtConditionCaptures(S);
+    results.insert(tmp.begin(), tmp.end());
+
+    tmp = getLoopVarDeclsInitializers(S);
+    results.insert(tmp.begin(), tmp.end());
   }
 
   return filterExprs(results);

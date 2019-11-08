@@ -47,38 +47,34 @@ Questions? Contact sst-macro-help@sandia.gov
 
 #include "pragmas.h"
 
-#include <functional>
 #include <optional>
 #include <vector>
 
 namespace memoize {
 
-/*
-class MemoizationStrings {
+class ExpressionStrings {
 public:
-  MemoizationStrings(
-      std::string const &name, std::vector<Variable> const &Variables,
-      std::function<std::string(std::vector<Variable> const &)> fn);
+  ExpressionStrings(clang::Expr const *e);
 
-  MemoizationStrings() = default;
-
-  std::string const &getDecleration() const { return decleration_; }
-  std::string const &getCallsite() const { return callsite_; }
-  std::string const &getDefinition() const { return definition_; }
+  /* Returns the type plus expression in quotes so true would return
+   * either "_Bool true" or "bool true" depending on the language
+   */
+  std::string getExpressionLabel() const;
+  std::string getSrcFileType() const;
+  std::string const &getCppType() const;
+  std::string const &getExprSpelling() const;
 
 private:
-  std::string decleration_;
-  std::string callsite_;
-  std::string definition_;
+  std::string cppType; // Must always have this for the extern cpp file
+  std::optional<std::string> cType; // Only needed if the active lang is C
+  std::string spelling;             // The actual expression
 };
-*/
 
 /*
  * Will automatically determine which expressions to capture unless the user
  * provides variables.  If the user provides variables and wants that in
- * addition to automatic capture they should include the word automatic in the
+ * addition to automatic capture they should include the word auto in the
  * list of things to capture.
- *
  *
  */
 class SSTMemoizePragma : public SSTPragma {
@@ -94,6 +90,7 @@ private:
   std::optional<std::vector<std::string>> VariableNames_;
   std::optional<std::vector<std::string>> ExtraExpressions_;
   bool DoAutoCapture = true;
+  std::vector<ExpressionStrings> ExprStrs_;
 };
 } // namespace memoize
 
