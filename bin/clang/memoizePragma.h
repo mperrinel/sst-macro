@@ -91,6 +91,9 @@ private:
   std::optional<std::vector<std::string>> ExtraExpressions_;
   bool DoAutoCapture = true;
   std::vector<ExpressionStrings> ExprStrs_;
+  std::string static_capture_decl_;
+  std::string start_capture_definition_;
+  std::string stop_capture_definition_;
 };
 } // namespace memoize
 

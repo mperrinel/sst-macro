@@ -126,7 +126,7 @@ std::string declare_start_function(
   os << "void " << FuncName << "("
      << parseExprString(ExprStrs,
                         [](memoize::ExpressionStrings const &es) {
-                          return "char const*, " + es.getSrcFileType();
+                          return es.getSrcFileType();
                         })
      << ");";
   return out;
@@ -151,8 +151,7 @@ start_call_site(std::string const &FuncName,
   os << FuncName << "("
      << parseExprString(ExprStrs,
                         [](memoize::ExpressionStrings const &es) {
-                          return es.getExpressionLabel() + ", " +
-                                 es.getExprSpelling();
+                          return es.getExprSpelling();
                         })
      << ");";
   return out;
@@ -177,9 +176,8 @@ start_definition(std::string const &FuncName,
      << parseExprString(
             ExprStrs,
             [var = 0](memoize::ExpressionStrings const &es) mutable {
-              auto v1 = "char const* v" + std::to_string(var++) + ", ";
-              auto v2 = es.getCppType() + " v" + std::to_string(var++);
-              return v1 + v2;
+              auto v = es.getCppType() + " v" + std::to_string(var++);
+              return v;
             })
      << "){\n\tstd::call_once(" << captureFlagName << ",\n\t\t[]{"
      << captureVarName << " = "
@@ -190,9 +188,8 @@ start_definition(std::string const &FuncName,
      << parseExprString(
             ExprStrs,
             [var = 0](memoize::ExpressionStrings const &es) mutable {
-              auto v1 = "v" + std::to_string(var++) + ", ";
-              auto v2 = "v" + std::to_string(var++);
-              return v1 + v2;
+              auto v = "v" + std::to_string(var++);
+              return v;
             })
      << ");\n}";
 
@@ -296,16 +293,9 @@ void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
   auto ParentDecl = getNonNull(matchers::getParentDecl(S));
   auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
 
-  // llvm::errs() << "\n\nDeclerations\n\n";
-  // llvm::errs() << declare_start_function(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << declare_end_function(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << "\n\nCalls\n\n";
-  // llvm::errs() << start_call_site(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << end_call_site(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << "\n\nIN THE CPP FILE\n\n";
-  // llvm::errs() << write_static_capture_variable(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << start_definition(FuncName, ExprStrs_) << "\n";
-  // llvm::errs() << end_definition(FuncName, ExprStrs_) << "\n\n\n";
+  static_capture_decl_ = write_static_capture_variable(FuncName, ExprStrs_);
+  start_capture_definition_ = start_definition(FuncName, ExprStrs_);;
+  stop_capture_definition_ = end_definition(FuncName, ExprStrs_);
 
   R.InsertTextBefore(getStart(ParentDecl),
                      declare_start_function(FuncName, ExprStrs_) + "\n");
@@ -327,7 +317,9 @@ void SSTMemoizePragma::deactivate(PragmaConfig &cfg) {
     vec.push_back(std::make_pair(this, "#include \"capture.h\"\n"));
   }
 
-  // vec.push_back(std::make_pair(pragma, ));
+  vec.push_back(std::make_pair(this, static_capture_decl_ + "\n"));
+  vec.push_back(std::make_pair(this, start_capture_definition_ + "\n"));
+  vec.push_back(std::make_pair(this, stop_capture_definition_ + "\n"));
 }
 } // namespace memoize
 
