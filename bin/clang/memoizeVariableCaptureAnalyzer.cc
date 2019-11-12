@@ -43,6 +43,7 @@ Questions? Contact sst-macro-help@sandia.gov
 */
 
 #include "memoizeVariableCaptureAnalyzer.h"
+
 #include "astMatchers.h"
 #include "clangGlobals.h"
 #include "util.h"
