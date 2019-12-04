@@ -104,121 +104,50 @@ static std::string appendText(clang::Expr* expr, const std::string& toAppend)
   pp.os << toAppend;
   return pp.str();
 }
-
-void
-ASTVisitorCmdLine::setup()
-{
-  int skeletonize = 0;
-  const char* skelStr = getenv("SSTMAC_SKELETONIZE");
-  if (skelStr){
-    int runSkeletonize = atoi(skelStr);
-    if (runSkeletonize){
-      skeletonize = 1;
+void ASTVisitorCmdLine::setup() {
+  auto getModeInfo = [](llvm::cl::opt<bool> const &cmdline, char const *s) {
+    const char* Str = getenv(s);
+    if (cmdline.getNumOccurrences() || (Str && atoi(Str))){
+        return 1;
     }
-  }
 
-  if (skeletonizeOpt.getNumOccurrences()){
-    skeletonize = 1;
-  }
+    return 0;
+  };
 
-  int puppetize = 0;
-  const char* puppetStr = getenv("SSTMAC_PUPPETIZE");
-  if (puppetStr){
-    int runPuppetize = atoi(puppetStr);
-    if (runPuppetize){
-      puppetize = 1;
-    }
-  }
-
-  if (puppetizeOpt.getNumOccurrences()){
-    puppetize = 1;
-  }
-
-  int shadowize = 0;
-  const char* shadowStr = getenv("SSTMAC_SHADOWIZE");
-  if (shadowStr){
-    int runShadowize = atoi(shadowStr);
-    if (runShadowize){
-      shadowize = 1;
-    }
-  }
-
-  if (shadowizeOpt.getNumOccurrences()){
-    shadowize = 1;
-  }
-
-  int memoize = 0;
-  const char* memoStr = getenv("SSTMAC_MEMOIZE");
-  if (memoStr){
-    int runMemoize = atoi(memoStr);
-    if (runMemoize){
-      memoize = 1;
-    }
-  }
-
-  if (memoizeOpt.getNumOccurrences()){
-    memoize = 1;
-  }
-
-  int encapsulate = 0;
-  const char* encapsulaeStr = getenv("SSTMAC_ENCAPSULATE");
-  if (encapsulaeStr){
-    int runEncapsulate = atoi(encapsulaeStr);
-    if (runEncapsulate){
-      encapsulate = 1;
-    }
-  }
-
-  if (encapsulateOpt.getNumOccurrences()){
-    encapsulate = 1;
-  }
+  int skeletonize = getModeInfo(skeletonizeOpt, "SSTMAC_SKELETONIZE");
+  int memoize = getModeInfo(memoizeOpt, "SSTMAC_MEMOIZE");
+  int shadowize = getModeInfo(shadowizeOpt, "SSTMAC_SHADOWIZE");
+  int puppetize = getModeInfo(puppetizeOpt, "SSTMAC_PUPPETIZE");
+  int encapsulate = getModeInfo(encapsulateOpt, "SSTMAC_ENCAPSULATE");
 
   int modeSum = skeletonize + memoize + shadowize + puppetize + encapsulate;
-  if (modeSum > 1){
+  if (modeSum > 1) {
     std::cerr << "input error: can only specify one mode of "
                  "skeletonize, memoize, shadowize, puppetize, or encapsulate"
               << std::endl;
     exit(EXIT_FAILURE);
   }
 
-  if (modeSum == 0){
-    mode = ENCAPSULATE_MODE;
-  } else {
-    if (encapsulate) mode = ENCAPSULATE_MODE;
-    if (skeletonize) mode = SKELETONIZE_MODE;
-    if (puppetize)   mode = PUPPETIZE_MODE;
-    if (shadowize)   mode = SHADOWIZE_MODE;
-    if (memoize)     mode = MEMOIZE_MODE;
-  }
+  if (modeSum == 0 || encapsulate)  mode = ENCAPSULATE_MODE;
+  if (skeletonize) mode = SKELETONIZE_MODE;
+  if (puppetize) mode = PUPPETIZE_MODE;
+  if (shadowize) mode = SHADOWIZE_MODE;
+  if (memoize) mode = MEMOIZE_MODE;
+
   modeMask = 1 << mode;
 
-
-  if (includeListOpt.getNumOccurrences()){
+  if (includeListOpt.getNumOccurrences()) {
     StringRef sref(includeListOpt);
     std::istringstream sstr(sref.str());
     std::string path;
-    while (std::getline(sstr, path, ':'))
-    {
+    while (std::getline(sstr, path, ':')) {
       includePaths.push_back(path);
     }
   }
 
-  const char* mainStr = getenv("SSTMAC_REFACTOR_MAIN");
-  if (mainStr){
-    refactorMain = atoi(mainStr);
-  }
-
-  if (refactorMain){
-    refactorMain = true;
-    if (noRefactorMainOpt){
-      std::cerr << "Cannot specify both refactor/no-refactor options" << std::endl;
-      ::abort();
-    }
-  } else if (noRefactorMainOpt){
+  if (noRefactorMainOpt || memoize) {
     refactorMain = false;
   }
-
-
 }
 
 void

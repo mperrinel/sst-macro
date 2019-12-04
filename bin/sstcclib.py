@@ -276,12 +276,14 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
     ctx.compilerFlags.append("-fvisibility=%s" % args.fvisibility)
 
   if args.skeletonize: ctx.clangArgs.append("--skeletonize")
-# if args.memoize: clangArgs.append("--memoize")
+  if args.memoize: 
+      memoizing = True
+      ctx.clangArgs.append("--memoize")
   
   #this is probably cmake being a jack-donkey during configure, overwrite it
   if args.std == "c++98": args.std = "c++1y"
 
-  if redefineSymbols and not args.sst_component:
+  if redefineSymbols and not args.sst_component and not memoizing:
     repldir = os.path.join(cleanFlag(includeDir), "sstmac", "replacements")
     repldir = cleanFlag(repldir)
     args.I.append(os.path.join(prefix, "include", "sumi"))

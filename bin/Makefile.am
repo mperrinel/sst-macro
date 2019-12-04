@@ -106,8 +106,6 @@ sstmac_clang_SOURCES += \
 	clang/ompPuppetizePragma.cc \
 	clang/memoizeVariable.cc
 
-old_standards=-std=c++11 -std=c++0x -std=c++1y -std=c++14 -std=c++1z
-libclang17_a_CXXFLAGS = $(filter-out $(old_standards), $(sstmac_clang_CXXFLAGS))
 
 library_includedir=$(includedir)/memoization
 library_include_HEADERS = clang/memoization/capture.h

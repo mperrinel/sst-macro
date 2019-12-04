@@ -54,7 +54,7 @@ Questions? Contact sst-macro-help@sandia.gov
 
 namespace memoize {
 #if __cplusplus >= 201703L
-template <typename... Args> void print_types(Args &&... args) {
+template <typename... Args> void print_types(Args... args) {
   std::cout << "Types: ";
   (..., (std::cout << args << " "));
   std::cout << "\n";
@@ -64,7 +64,7 @@ template <typename... Args> class Capture {
 public:
   Capture(char const *unique_id) : unique_id_(unique_id) {}
 
-  void capture_start(char const *unique_id, Args ...args) {
+  void capture_start(char const *unique_id, Args... args) {
     assert(unique_id_ == unique_id);
     arg_buffer_ = std::make_tuple(args...);
     start_setup();
@@ -99,8 +99,8 @@ private:
   void stop_setup() override {
     t1_ = std::chrono::high_resolution_clock::now();
     auto time = std::chrono::duration<double>(t1_ - t0_).count();
-    std::cout << "Took " << time << " seconds\n\t";
-    // std::apply(print_types<Args...>, this->StoredArgs());
+    std::cout << "Took " << time << " seconds for " << this->ID() << "\n\t";
+    std::apply(print_types<Args...>, this->StoredArgs());
     rows_.push_back(std::tuple_cat(this->StoredArgs(), std::tie(time)));
   }
 
@@ -118,66 +118,5 @@ template <typename... Args> Capture<Args...> *getCaptureType(char const *id) {
 }
 
 #else // Not c++17 or greater
-template <typename... Args> void print_types(Args &&... args) {
-  std::cout << "Number of args is: " << sizeof...(Args);
-}
-
-template <typename... Args> class Capture {
-public:
-  Capture(char const *unique_id) : unique_id_(unique_id) {}
-
-  void capture_start(char const *unique_id, Args ...args) {
-    assert(unique_id_ == unique_id);
-    arg_buffer_ = std::make_tuple(args...);
-    start_setup();
-  }
-
-  void capture_stop(char const *unique_id) {
-    assert(unique_id_ == unique_id);
-    stop_setup();
-  }
-
-  std::tuple<Args...> const &StoredArgs() const { return arg_buffer_; }
-  std::string const &ID() const { return unique_id_; }
-
-private:
-  virtual void start_setup(){};
-  virtual void stop_setup(){};
-
-private:
-  std::string unique_id_;
-  std::tuple<Args...> arg_buffer_;
-};
-
-template <typename... Args> class TimerPrinter : public Capture<Args...> {
-public:
-  TimerPrinter(char const *unique_id) : Capture<Args...>(unique_id) {}
-
-private:
-  void start_setup() override {
-    t0_ = std::chrono::high_resolution_clock::now();
-  }
-
-  void stop_setup() override {
-    t1_ = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration<double>(t1_ - t0_).count();
-    std::cout << "Took " << time << " seconds\n\t";
-    // std::apply(print_types<Args...>, this->StoredArgs());
-    rows_.push_back(std::tuple_cat(this->StoredArgs(), std::tie(time)));
-  }
-
-  std::chrono::high_resolution_clock::time_point t0_;
-  std::chrono::high_resolution_clock::time_point t1_;
-  std::vector<std::tuple<Args..., double>> rows_;
-};
-
-// TODO replace type with global stuffs
-template <typename... Args> Capture<Args...> *getCaptureType(char const *id) {
-  switch (0) {
-  default:
-    return new TimerPrinter<Args...>(id);
-  }
-}
-
 #endif
 } // namespace memoize

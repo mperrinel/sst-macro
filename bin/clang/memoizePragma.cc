@@ -284,8 +284,6 @@ std::string const &ExpressionStrings::getExprSpelling() const {
 
 void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
                                 PragmaConfig &Cfg) {
-
-  S->dumpPretty(*sst::activeASTContext);
   for (auto Expr : getAllExprs(S, VariableNames_, DoAutoCapture)) {
     ExprStrs_.emplace_back(Expr);
   }
@@ -294,7 +292,7 @@ void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
   auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
 
   static_capture_decl_ = write_static_capture_variable(FuncName, ExprStrs_);
-  start_capture_definition_ = start_definition(FuncName, ExprStrs_);;
+  start_capture_definition_ = start_definition(FuncName, ExprStrs_);
   stop_capture_definition_ = end_definition(FuncName, ExprStrs_);
 
   R.InsertTextBefore(getStart(ParentDecl),
@@ -302,7 +300,8 @@ void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
   R.InsertTextBefore(getStart(ParentDecl),
                      declare_end_function(FuncName, ExprStrs_) + "\n");
 
-  R.InsertTextBefore(getStart(S), start_call_site(FuncName, ExprStrs_) + "\n");
+  R.InsertTextBefore(pragmaDirectiveLoc,
+                     start_call_site(FuncName, ExprStrs_) + "\n");
   R.InsertTextAfterToken(getEnd(S), end_call_site(FuncName, ExprStrs_) + "\n");
 }
 
