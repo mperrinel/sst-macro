@@ -84,7 +84,13 @@ class DeleteOpenMPPragma : public PragmaHandler
 {
  public:
   DeleteOpenMPPragma() : PragmaHandler("omp") {}
-  void HandlePragma(Preprocessor &PP, PragmaIntroducerKind Introducer, Token &FirstToken) override {}
+  void HandlePragma(Preprocessor &PP, 
+#if CLANG_VERSION_MAJOR >= 9
+      PragmaIntroducer Introducer, 
+#else
+      PragmaIntroducerKind Introducer, 
+#endif 
+      Token &FirstToken) override {}
 };
 
 std::unique_ptr<clang::ASTConsumer>
@@ -92,7 +98,11 @@ ReplaceAction::CreateASTConsumer(clang::CompilerInstance& CI, clang::StringRef /
   rewriter_.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
   visitor_.setCompilerInstance(CI);
   initPragmas(CI, ASTVisitorCmdLine::mode);
+#if __cplusplus >= 201402L
+  return std::make_unique<SkeletonASTConsumer>(rewriter_, visitor_);
+#else
   return llvm::make_unique<SkeletonASTConsumer>(rewriter_, visitor_);
+#endif
 }
 
 void
@@ -173,7 +183,11 @@ void
 ReplaceAction::initPragmas(CompilerInstance& CI, pragmas::Mode m)
 {
   /** Need this to figure out begin location of #pragma */
+#if __cplusplus >= 201402L
+  CI.getPreprocessor().addPPCallbacks(std::make_unique<PragmaPPCallback>());
+#else
   CI.getPreprocessor().addPPCallbacks(llvm::make_unique<PragmaPPCallback>());
+#endif
 }
 
 void

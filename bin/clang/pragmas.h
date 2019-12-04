@@ -267,10 +267,24 @@ struct SSTPragmaList {
 
 class SSTPragmaHandler : public clang::PragmaHandler {
 
- public:
+
+public:
+#if CLANG_VERSION_MAJOR >= 9
+  virtual void HandlePragma(clang::Preprocessor &PP,
+                    clang::PragmaIntroducerKind Introducer,
+                    clang::Token &PragmaTok);
+
+  void HandlePragma(clang::Preprocessor &PP,
+                    clang::PragmaIntroducer Introducer,
+                    clang::Token &PragmaTok) override {
+    this->HandlePragma(PP, Introducer.Kind, PragmaTok);
+  }
+#else
   void HandlePragma(clang::Preprocessor &PP,
                     clang::PragmaIntroducerKind Introducer,
-                    clang::Token &PragmaTok) override;
+                    clang::Token &PragmaTok) override ;
+#endif
+
 
   bool deleteOnUse() const {
     return deleteOnUse_;
