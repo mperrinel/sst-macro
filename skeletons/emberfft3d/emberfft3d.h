@@ -23,11 +23,13 @@
 #include <mpi.h>
 #include <assert.h>
 #include <sstream>
+#include <iostream>
 
 struct Data {
     int np0;
     int np1;
     int np2;
+    int iterations;
     unsigned int nprow;
     unsigned int npcol;
     int np0loc;
@@ -101,6 +103,8 @@ float              m_nsPerElement;
 std::vector<float> m_transCostPer(6);
 int buffsize;
 
+int parseArgs(int, char**, Data&);
 void init(Data&);
 void configure();
+void run();
 #endif
