@@ -14,6 +14,7 @@
 // distribution.
 
 #include "emberfft3d.h"
+#include <iostream>
 
 // TODO: parse sst arguments to fill a data struct
 void init(Data& m_data) {
@@ -31,7 +32,7 @@ void init(Data& m_data) {
   m_data.np2 = 100;
   m_data.nprow = 1;
 
-  m_iterations = 1;
+  m_iterations = 2;
 
   m_nsPerElement = 1;
 
@@ -55,14 +56,8 @@ void configure()
 {
     m_data.npcol = comm_size / m_data.nprow;
 
-    //assert( 0 == (comm_size % m_data.nprow) );
-
     unsigned myRow = comm_rank % m_data.nprow;
     unsigned myCol = comm_rank / m_data.nprow;
-//    verbose(CALL_INFO, 2, 0, "%d: nx=%d ny=%d nx=%d nprow=%d "
-//        "npcol=%d myRow=%d myCol=%d\n",
-//            comm_rank, m_data.np0, m_data.np1, m_data.np2,
-//                m_data.nprow, m_data.npcol, myRow, myCol );
 
     initTimes( comm_size, m_data.np0, m_data.np1, m_data.np2,
                     m_nsPerElement, m_transCostPer );
@@ -76,14 +71,14 @@ void configure()
         m_rowGrpRanks[i] = myRow + i * m_data.nprow;
         tmp << m_rowGrpRanks[i] << " " ;
     }
-//    verbose(CALL_INFO, 2, 0,"row grp [%s]\n", tmp.str().c_str() );
+
     tmp.str("");
     tmp.clear();
     for ( unsigned int i = 0; i < m_colGrpRanks.size(); i++ ) {
         m_colGrpRanks[i] = myCol * m_data.nprow + i;
         tmp << m_colGrpRanks[i] << " " ;
+        std::cout << "Rank " << comm_rank << "->" << m_colGrpRanks[i] << std::endl;
     }
-//    verbose(CALL_INFO, 2, 0,"col grp [%s]\n", tmp.str().c_str() );
 
     m_data.np0loc_row.resize(m_data.nprow);
     m_data.np1loc_row.resize(m_data.nprow);
@@ -138,10 +133,6 @@ void configure()
     }
     m_data.ntrans = m_data.np1locf * m_data.np2loc;
 
-//    verbose(CALL_INFO, 2, 0, "np0half=%d np0loc=%d np1locf_=%d "
-//            "np1locb_%d np2loc_=%d\n",
-//        m_data.np0half, m_data.np0loc, m_data.np1locf, m_data.np1locb, m_data.np2loc );
-
     m_rowSendCnts.resize(m_data.npcol);
     m_rowSendDsp.resize(m_data.npcol);
     m_rowRecvCnts.resize(m_data.npcol);
@@ -153,8 +144,6 @@ void configure()
         int sendblk = 2*m_data.np0loc * m_data.np1loc_col[i] *m_data.np2loc;
         int recvblk = 2*m_data.np0loc *m_data.np1locb * m_data.np2loc_col[i];
 
-//        verbose(CALL_INFO, 2, 0,"row, sendblk=%d soffset=%d "
-//                "recvblk=%d roffset=%d\n",sendblk,soffset,recvblk,roffset);
         m_rowSendCnts[i] = sendblk;
         m_rowRecvCnts[i] = recvblk;
         m_rowSendDsp[i] = soffset; 
@@ -173,8 +162,6 @@ void configure()
 
         int sendblk = 2 * m_data.np0loc_row[i] *m_data.np1locf *m_data.np2loc;
         int recvblk = 2 *m_data.np0loc * m_data.np1loc_row[i] *m_data.np2loc;
-//        verbose(CALL_INFO, 2, 0,"col_f, sendblk=%d soffset=%d "
-//                "recvblk=%d roffset=%d\n",sendblk,soffset,recvblk,roffset);
 
         m_colSendCnts_f[i] = sendblk;
         m_colRecvCnts_f[i] = recvblk; 
@@ -195,9 +182,6 @@ void configure()
         int sendblk = 2 *m_data.np0loc * m_data.np1loc_row[i] *m_data.np2loc;
         int recvblk = 2 * m_data.np0loc_row[i] *m_data.np1locf *m_data.np2loc;
 
-//        verbose(CALL_INFO, 2, 0,"col_b, sendblk=%d soffset=%d "
-//                "recvblk=%d roffset=%d\n",sendblk,soffset,recvblk,roffset);
-
         m_colSendCnts_b[i] = sendblk;
         m_colRecvCnts_b[i] = recvblk; 
         m_colSendDsp_b[i] = soffset; 
@@ -213,14 +197,12 @@ void configure()
     int maxsize = (size1 > size2 ? size1 : size2);
     maxsize = (maxsize > size3 ? maxsize : size3);
     // TODO: better way to allocate?
-    m_sendBuf =   malloc( maxsize * sizeof(MPI_COMPLEX));
-    m_recvBuf =   malloc( maxsize * sizeof(MPI_COMPLEX));
-//    verbose(CALL_INFO, 2, 0,"maxsize=%d\n",maxsize);
-
-//    verbose(CALL_INFO, 2, 0,"np0=%d np1=%d np2=%d nprow=%d npcol=%d\n",
-//                m_data.np0, m_data.np1, m_data.np2, m_data.nprow, m_data.npcol );
-//    verbose(CALL_INFO, 2, 0,"np0half=%d np1loc=%d np1locf=%d no1locb=%d np2loc=%d\n",
-//        m_data.np0half, m_data.np0loc, m_data.np1locf, m_data.np1locb, m_data.np2loc );
+    buffsize=maxsize * sizeof(MPI_COMPLEX);
+//    m_sendBuf =   malloc( maxsize * sizeof(MPI_COMPLEX));
+//    m_recvBuf =   malloc( maxsize * sizeof(MPI_COMPLEX));
+    printf("maxsize: %i\n", maxsize);
+    printf("maxsize * sizeof(MPI_COMPLEX): %i\n", maxsize * sizeof(MPI_COMPLEX));
+    printf("\n");
 
 }
 
@@ -228,14 +210,7 @@ void initTimes( int numPe, int x, int y, int z, float nsPerElement,
                 std::vector<float>& transCostPer )
 {
 
-    double cost = nsPerElement * x * ((y * z)/numPe); 
-//	if ( 0 == comm_rank ) {
-//	   	output("%s: nsPerElement=%.5f %.2f %.2f %.2f"
-//			" %.2f %.2f %.2f\n", getMotifName().c_str(), nsPerElement,
-//			transCostPer[0], transCostPer[1], transCostPer[2],
-//			transCostPer[3], transCostPer[4], transCostPer[5]);
-//	}
-    //assert( cost > 0.0 );
+    double cost = nsPerElement * x * ((y * z)/numPe);
     m_fwdTime[0] =  m_fwdTime[1] = m_fwdTime[2] = cost; 
     m_bwdTime[0] =  m_bwdTime[1] = m_bwdTime[2] = cost; 
     m_bwdTime[2] *= 2;
@@ -249,83 +224,65 @@ void initTimes( int numPe, int x, int y, int z, float nsPerElement,
     m_bwdTime[2] *= transCostPer[5];  
 }
 
-bool generate()
+void generate()
 {
-//    verbose(CALL_INFO, 1, 0, "loop=%d\n", m_loopIndex );
+    void* m_sendBuf = malloc(buffsize);
+    void* m_recvBuf = malloc(buffsize);
+    g_m_sendBuf = m_sendBuf;
+    g_m_recvBuf = m_recvBuf;
 
-    m_forwardTotal += (m_forwardStop - m_forwardStart);
-    m_backwardTotal += (m_backwardStop - m_forwardStop);
+    MPI_Group_incl(group_world, static_cast<int>(m_rowGrpRanks.size()), m_rowGrpRanks.data(), &m_rowGroup);
+    MPI_Comm_create(comm, m_rowGroup, &m_rowComm);
 
-    if (  m_loopIndex == (signed) m_iterations ) {
-        if ( 0 == comm_rank ) {
-            printf(": nRanks=%d fwd time %f sec\n", comm_size,
-                ((double) m_forwardTotal / 1000000000.0) / m_iterations );
-            printf(": rRanks=%d bwd time %f sec\n", comm_size,
-                ((double) m_backwardTotal / 1000000000.0) / m_iterations );
-        }
-        return true;
+    std::cout << "rank " << comm_rank << " including " << m_colGrpRanks[0] << " in group" << std::endl;
+    MPI_Group_incl(group_world, static_cast<int>(m_colGrpRanks.size()), m_colGrpRanks.data(), &m_colGroup);
+    MPI_Comm_create(comm, m_colGroup, &m_colComm);
+
+    for(int i = 0; i < m_loopIndex; i++) {
+
+      m_forwardTotal += (m_forwardStop - m_forwardStart);
+      m_backwardTotal += (m_backwardStop - m_forwardStop);
+
+      sstmac_compute(calcFwdFFT1());
+
+      int* cnts = &m_colSendCnts_f[0];
+      int* disps = &m_colSendDsp_f[0];
+
+      MPI_Alltoallv(m_sendBuf, &m_colSendCnts_f[0], &m_colSendDsp_f[0], MPI_DOUBLE,
+          m_recvBuf, &m_colRecvCnts_f[0], &m_colRecvDsp_f[0], MPI_DOUBLE,
+          m_colComm );
+
+      sstmac_compute(calcFwdFFT2());
+      MPI_Alltoallv(m_sendBuf, &m_rowSendCnts[0], &m_rowSendDsp[0], MPI_DOUBLE,
+          m_recvBuf, &m_rowRecvCnts[0], &m_rowRecvDsp[0], MPI_DOUBLE,
+          m_rowComm );
+
+      sstmac_compute(calcFwdFFT3());
+      MPI_Barrier(comm);
+
+      sstmac_compute(calcBwdFFT1());
+      MPI_Alltoallv( m_sendBuf, &m_rowSendCnts[0], &m_rowSendDsp[0], MPI_DOUBLE,
+                     m_recvBuf, &m_rowRecvCnts[0], &m_rowRecvDsp[0], MPI_DOUBLE,
+                     m_rowComm );
+
+      sstmac_compute(calcBwdFFT2());
+      MPI_Alltoallv(m_sendBuf, &m_colSendCnts_b[0], &m_colSendDsp_b[0], MPI_DOUBLE,
+          m_recvBuf, &m_colRecvCnts_b[0], &m_colRecvDsp_b[0], MPI_DOUBLE,
+          m_colComm );
+
+      sstmac_compute(calcBwdFFT3());
+      MPI_Barrier(comm);
     }
 
-    if (  m_loopIndex < 0 ) {
-      //TODO: Does this replacement work?
-      MPI_Group_incl(group_world, static_cast<int>(m_rowGrpRanks.size()), m_rowGrpRanks.data(), &m_rowGroup);
-      MPI_Comm_create(comm, m_rowGroup, &m_rowComm);
+    MPI_Comm_free(&m_rowComm);
+    MPI_Comm_free(&m_colComm);
 
-      MPI_Group_incl(group_world, static_cast<int>(m_colGrpRanks.size()), m_colGrpRanks.data(), &m_colGroup);
-      MPI_Comm_create(comm, m_rowGroup, &m_colComm);
-
-//        enQ_commCreate( evQ, GroupWorld, m_rowGrpRanks, &m_rowComm );
-//        enQ_commCreate( evQ, GroupWorld, m_colGrpRanks, &m_colComm );
-        ++m_loopIndex;
-        return false;
+    if ( 0 == comm_rank ) {
+        printf(": nRanks=%d fwd time %f sec\n", comm_size,
+            ((double) m_forwardTotal / 1000000000.0) / m_iterations );
+        printf(": rRanks=%d bwd time %f sec\n", comm_size,
+            ((double) m_backwardTotal / 1000000000.0) / m_iterations );
     }
-
-    // TODO: replace with a compute directive
-    //enQ_compute( evQ, (uint64_t) ((double) calcFwdFFT1() ) );
-
-    MPI_Alltoallv(m_sendBuf, &m_colSendCnts_f[0], &m_colSendDsp_f[0], MPI_DOUBLE,
-        m_recvBuf, &m_colRecvCnts_f[0], &m_colRecvDsp_f[0], MPI_DOUBLE,
-        m_colComm );
-  
-//    enQ_compute( evQ, (uint64_t) ((double) calcFwdFFT2() ) );
-    MPI_Alltoallv(m_sendBuf, &m_rowSendCnts[0], &m_rowSendDsp[0], MPI_DOUBLE,
-        m_recvBuf, &m_rowRecvCnts[0], &m_rowRecvDsp[0], MPI_DOUBLE,
-        m_rowComm );
-
-//TODO: replace with a compute directive
-//    enQ_compute( evQ, (uint64_t) ((double) calcFwdFFT3()  ) );
-    
-    MPI_Barrier(comm);
-
-    //TODO: replace with a compute directive
-//    enQ_compute( evQ, (uint64_t) ((double) calcBwdFFT1() ) );
-
-    MPI_Alltoallv( m_sendBuf, &m_rowSendCnts[0], &m_rowSendDsp[0], MPI_DOUBLE,
-                   m_recvBuf, &m_rowRecvCnts[0], &m_rowRecvDsp[0], MPI_DOUBLE,
-                   m_rowComm );
-    
-//TODO: replace with a compute directive
-//    enQ_compute( evQ, (uint64_t) ((double) calcBwdFFT2() ) );
-
-    MPI_Alltoallv(m_sendBuf, &m_colSendCnts_b[0], &m_colSendDsp_b[0], MPI_DOUBLE,
-        m_recvBuf, &m_colRecvCnts_b[0], &m_colRecvDsp_b[0], MPI_DOUBLE,
-        m_colComm );
-
-    //TODO: replace with a compute directive
-//    enQ_compute( evQ, (uint64_t) ((double) calcBwdFFT3() ) );
-
-    MPI_Barrier(comm);
-//    enQ_barrier( evQ, GroupWorld );
-//    enQ_getTime( evQ, &m_backwardStop );
-
-    if ( ++m_loopIndex == (signed) m_iterations ) {
-      MPI_Comm_free(&m_rowComm);
-      MPI_Comm_free(&m_colComm);
-//        enQ_commDestroy( evQ, m_rowComm );
-//        enQ_commDestroy( evQ, m_colComm );
-    }
-
-    return false;
 }
 
 int main(int argc, char** argv)

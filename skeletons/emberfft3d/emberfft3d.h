@@ -95,10 +95,11 @@ std::vector<int>    m_colSendCnts_b;
 std::vector<int>    m_colSendDsp_b;
 std::vector<int>    m_colRecvCnts_b;
 std::vector<int>    m_colRecvDsp_b;
-void*               m_sendBuf;
-void*               m_recvBuf;
+void*               g_m_sendBuf;
+void*               g_m_recvBuf;
 float              m_nsPerElement;
 std::vector<float> m_transCostPer(6);
+int buffsize;
 
 void init(Data&);
 void configure();
