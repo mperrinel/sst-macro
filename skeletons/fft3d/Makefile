@@ -1,5 +1,5 @@
-TARGET := emberfft3
-SRC := emberfft3d.cc
+TARGET := fft3
+SRC := fft3d.cc
 
 CXX :=    sst++
 CC :=     sstcc
@@ -7,7 +7,7 @@ CC :=     sstcc
 #CC :=     gcc
 #CXX :=   mpicxx 
 #CC :=    mpicc
-CXXFLAGS := -fPIC -O3
+CXXFLAGS := -fPIC -O0 -g
 CPPFLAGS := -I.
 LIBDIR :=  
 PREFIX := 
@@ -28,7 +28,7 @@ libpic.so: $(OBJ)
 	@echo "Linking SST core .so"
 	$(CXX) $(OBJ) $(LDFLAGS) -lm -o $@ 
 
-%.o: %.cc emberfft3d.h
+%.o: %.cc fft3d.h
 	SSTMAC_SKELETONIZE=1 $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 %.o: %.c

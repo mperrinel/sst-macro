@@ -26,22 +26,22 @@
 #include <iostream>
 
 struct Data {
-    int np0;
-    int np1;
-    int np2;
-    int iterations;
-    unsigned int nprow;
-    unsigned int npcol;
-    int np0loc;
-    int np0half;
-    int np1locf;
-    int np1locb;
-    int np2loc;
-    int ntrans;
-    std::vector<int> np0loc_row;
-    std::vector<int> np1loc_row;
-    std::vector<int> np1loc_col;
-    std::vector<int> np2loc_col;
+  int np0;
+  int np1;
+  int np2;
+  int iterations;
+  unsigned int nprow;
+  unsigned int npcol;
+  int np0loc;
+  int np0half;
+  int np1locf;
+  int np1locb;
+  int np2loc;
+  int ntrans;
+  std::vector<int> np0loc_row;
+  std::vector<int> np1loc_row;
+  std::vector<int> np1loc_col;
+  std::vector<int> np2loc_col;
 } m_data;
 
 std::vector< uint64_t > m_fwdTime(3,0);
@@ -54,7 +54,7 @@ uint64_t calcBwdFFT2() { return m_bwdTime[1]; }
 uint64_t calcBwdFFT3() { return m_bwdTime[2]; }
 
 void initTimes( int numPe, int x, int y, int z, float nsPerElement,
-            std::vector<float>& transCostPer );
+                std::vector<float>& transCostPer );
 
 int32_t m_loopIndex;
 
