@@ -131,7 +131,7 @@ auto bindAllConditionExprs = [](std::string const& str){
 };
 // clang-format on
 
-auto forStmtConditionCaptures(clang::Stmt const *FS) {
+auto stmtConditionCaptures(clang::Stmt const *FS) {
 
   // clang-format off
   auto getLoopVarsOrAnything = anyOf(
@@ -152,14 +152,14 @@ auto forStmtConditionCaptures(clang::Stmt const *FS) {
          ).bind("InnerExpr")
        );
 
-  auto blackListExprs = hasAncestor(arraySubscriptExpr());
+  auto rejectListExprs = hasAncestor(arraySubscriptExpr());
 
   auto filterForTopMatch = forEachDescendant(
          expr( 
            anyOf( // Preserves all inner expressions for anaylsis later
              expr(
                unless(hasBoundAncestorExpr("InnerExpr")),
-               unless(blackListExprs),
+               unless(rejectListExprs),
                equalsBoundNode("InnerExpr")
              ).bind("FinalExpr"),
              expr(
@@ -241,7 +241,7 @@ memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
   }
 
   if (AutoCapture) {
-    auto tmp = forStmtConditionCaptures(S);
+    auto tmp = stmtConditionCaptures(S);
     results.insert(tmp.begin(), tmp.end());
 
     tmp = getLoopVarDeclsInitializers(S);
