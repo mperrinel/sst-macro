@@ -44,21 +44,25 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 
+#include <fstream>
 #include <iostream>
 #include <tuple>
 
 #include <chrono>
+#include <cstdio>
 #include <map>
 #include <utility>
 #include <vector>
 
 namespace memoize {
 #if __cplusplus >= 201703L
-template <typename... Args> void print_types(Args... args) {
-  std::cout << "Types: ";
-  (..., (std::cout << args << " "));
-  std::cout << "\n";
-}
+template <typename... Args> struct print_types {
+  std::ostream &os;
+  std::ostream &operator()(Args... args) {
+    (..., (os << args << ","));
+    return os;
+  }
+};
 
 template <typename... Args> class Capture {
 public:
@@ -99,9 +103,10 @@ private:
   void stop_setup() override {
     t1_ = std::chrono::high_resolution_clock::now();
     auto time = std::chrono::duration<double>(t1_ - t0_).count();
-    std::cout << "Took " << time << " seconds for " << this->ID() << "\n\t";
-    std::apply(print_types<Args...>, this->StoredArgs());
-    rows_.push_back(std::tuple_cat(this->StoredArgs(), std::tie(time)));
+    // std::cout << "Took " << time << " seconds for " << this->ID() << "\n\t";
+    std::apply(print_types<Args...>{std::cout}, this->StoredArgs());
+    std::cout << "\n";
+    // rows_.push_back(std::tuple_cat(this->StoredArgs(), std::tie(time)));
   }
 
   std::chrono::high_resolution_clock::time_point t0_;
@@ -109,11 +114,38 @@ private:
   std::vector<std::tuple<Args..., double>> rows_;
 };
 
+template <typename... Args> class TimerCSV : public Capture<Args...> {
+public:
+  TimerCSV(char const *unique_id)
+      : Capture<Args...>(unique_id), fileOS_(std::string(unique_id) + ".csv") {
+      for(auto i = 0; i < sizeof...(Args); ++i){
+        fileOS_ << "arg" << std::to_string(i) << ",";
+      }
+      fileOS_ << "time\n" << std::flush;
+    }
+
+private:
+  void start_setup() override {
+    t0_ = std::chrono::high_resolution_clock::now();
+  }
+
+  void stop_setup() override {
+    t1_ = std::chrono::high_resolution_clock::now();
+    auto time = std::chrono::duration<double>(t1_ - t0_).count();
+    std::apply(print_types<Args...>{fileOS_}, this->StoredArgs());
+    fileOS_ << time << std::endl;
+  }
+
+  std::chrono::high_resolution_clock::time_point t0_;
+  std::chrono::high_resolution_clock::time_point t1_;
+  std::ofstream fileOS_;
+};
+
 // TODO replace type with global stuffs
 template <typename... Args> Capture<Args...> *getCaptureType(char const *id) {
   switch (0) {
   default:
-    return new TimerPrinter<Args...>(id);
+    return new TimerCSV<Args...>(id);
   }
 }
 

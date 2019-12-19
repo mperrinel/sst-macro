@@ -49,9 +49,13 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <string>
 
 
+namespace capture {
+enum class AutoCapture { None, AllConditions, ForLoopConditions};
+} // namespace capture
+
 llvm::SmallPtrSet<clang::Expr const *, 4>
 memoizationAutoMatcher(clang::Stmt const *S,
                        std::string const &namedDeclsRegex,
-                       bool AutoCapture);
+                       capture::AutoCapture ac);
 
 #endif //  bin_clang_memoizeVariableCaputreAnalyzer_H

@@ -131,6 +131,60 @@ auto bindAllConditionExprs = [](std::string const& str){
 };
 // clang-format on
 
+auto forStmtConditionCaptures(clang::Stmt const *FS) {
+
+  // clang-format off
+  auto getLoopVarsOrAnything = anyOf(
+         bindNestedDeclaredVarDecls("Declared"),
+         anything()
+       );
+
+  auto dependsOnLoopDeclaredVar = 
+    findAll(declRefExpr(to(varDecl(equalsBoundNode("Declared")))));
+
+  auto getMatchingExprs = forEachDescendant(
+         expr(
+           unless(dependsOnLoopDeclaredVar),
+           anyOf(
+             hasBoundAncestorExpr("ConditionExpr"),
+             equalsBoundNode("ConditionExpr")
+           )
+         ).bind("InnerExpr")
+       );
+
+  auto rejectListExprs = hasAncestor(arraySubscriptExpr());
+
+  auto filterForTopMatch = forEachDescendant(
+         expr( 
+           anyOf( // Preserves all inner expressions for anaylsis later
+             expr(
+               unless(hasBoundAncestorExpr("InnerExpr")),
+               unless(rejectListExprs),
+               equalsBoundNode("InnerExpr")
+             ).bind("FinalExpr"),
+             expr(
+               equalsBoundNode("InnerExpr")
+             ),
+             expr(
+               callExpr(),
+               unless(dependsOnLoopDeclaredVar)
+             ).bind("FinalExpr")
+           )
+         )
+       );
+
+  auto BN = match(
+      stmt(
+        forStmt(bindConditionExpr("ConditionExpr")), 
+        getLoopVarsOrAnything,
+        getMatchingExprs,
+        filterForTopMatch
+      ), *FS, *sst::activeASTContext);
+  // clang-format on
+
+  return matchers::toPtrSet<Expr>(BN, "FinalExpr");
+}
+
 auto stmtConditionCaptures(clang::Stmt const *FS) {
 
   // clang-format off
@@ -229,9 +283,10 @@ auto getLoopVarDeclsInitializers(clang::Stmt const *S) {
 
 } // namespace
 
+
 llvm::SmallPtrSet<Expr const *, 4>
 memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
-                       bool AutoCapture) {
+                       capture::AutoCapture ac) {
 
   llvm::SmallPtrSet<Expr const *, 4> results;
 
@@ -240,11 +295,17 @@ memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
     results.insert(tmp.begin(), tmp.end());
   }
 
-  if (AutoCapture) {
+  using namespace capture;
+  if (ac == AutoCapture::AllConditions) {
     auto tmp = stmtConditionCaptures(S);
     results.insert(tmp.begin(), tmp.end());
 
     tmp = getLoopVarDeclsInitializers(S);
+    results.insert(tmp.begin(), tmp.end());
+  }
+
+  if (ac == AutoCapture::ForLoopConditions) {
+    auto tmp = forStmtConditionCaptures(S);
     results.insert(tmp.begin(), tmp.end());
   }
 

@@ -93,12 +93,12 @@ auto parseKeyword(PragmaArgMap const &Strings, std::string const &Key) {
 template <typename StmtDecl, typename Container>
 auto getAllExprs(StmtDecl const *SD,
                  std::optional<Container> const &VariableNames,
-                 bool AutoCapture) {
+                 capture::AutoCapture ac) {
 
   std::string NameRegex =
       (VariableNames) ? ::matchers::makeNameRegex(*VariableNames) : "";
 
-  return memoizationAutoMatcher(SD, NameRegex, AutoCapture);
+  return memoizationAutoMatcher(SD, NameRegex, ac);
 }
 
 template <typename Fn>
@@ -159,7 +159,8 @@ start_call_site(std::string const &FuncName,
 
 std::string
 start_definition(std::string const &FuncName,
-                 std::vector<memoize::ExpressionStrings> const &ExprStrs) {
+                 std::vector<memoize::ExpressionStrings> const &ExprStrs,
+                 bool isOMPPragma) {
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -168,6 +169,9 @@ start_definition(std::string const &FuncName,
       parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
         return es.getCppType();
       });
+  if (isOMPPragma) {
+    argList += ",int,int";
+  }
 
   auto captureFlagName = FuncName + "_capture_flag";
   auto captureVarName = FuncName + "_capture_var";
@@ -186,12 +190,14 @@ start_definition(std::string const &FuncName,
      << "\t" << captureVarName << "->capture_start("
      << "\"" << FuncName << "\", "
      << parseExprString(
-            ExprStrs,
-            [var = 0](memoize::ExpressionStrings const &es) mutable {
+            ExprStrs, [var = 0](memoize::ExpressionStrings const &es) mutable {
               auto v = "v" + std::to_string(var++);
               return v;
-            })
-     << ");\n}";
+            });
+  if (isOMPPragma) {
+    os << ",omp_get_num_threads(),omp_get_proc_bind()";
+  }
+  os << ");\n}";
 
   return out;
 }
@@ -223,12 +229,16 @@ std::string end_call_site(std::string const &FuncName,
 
 std::string write_static_capture_variable(
     std::string const &FuncName,
-    std::vector<memoize::ExpressionStrings> const &ExprStrs) {
+    std::vector<memoize::ExpressionStrings> const &ExprStrs, bool isOMPPragma) {
 
   std::string argList =
       parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
         return es.getCppType();
       });
+  if (isOMPPragma) {
+    // omp_num_threads, omp_proc_bind
+    argList += ",int,int";
+  }
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -240,6 +250,31 @@ std::string write_static_capture_variable(
   return out;
 }
 
+bool removedKeyword(std::vector<std::string> &strs, char const *keyword) {
+  if (auto ac = std::find(strs.begin(), strs.end(), keyword);
+      ac != strs.end()) {
+    strs.erase(ac);
+    return true;
+  }
+
+  return false;
+}
+
+capture::AutoCapture
+parseCaptureOptions(std::optional<std::vector<std::string>> &VariableNames) {
+  if (VariableNames) { // User provided specific variables to capture
+    if (removedKeyword(*VariableNames, "auto")) {
+      return capture::AutoCapture::AllConditions;
+    } else if (removedKeyword(*VariableNames, "for")) {
+      return capture::AutoCapture::ForLoopConditions;
+    } else { // No special capture keywords don't do auto capture
+      return capture::AutoCapture::None;
+    }
+  }
+
+  return capture::AutoCapture::AllConditions;
+} // namespace
+
 } // namespace
 
 namespace memoize {
@@ -247,17 +282,8 @@ SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation Loc,
                                    clang::CompilerInstance &CI,
                                    PragmaArgMap &&PragmaStrings)
     : VariableNames_(parseKeyword(PragmaStrings, "variables")),
-      ExtraExpressions_(parseKeyword(PragmaStrings, "extra_exressions")) {
-  if (VariableNames_) {
-    auto &strs = *VariableNames_;
-    if (auto ac = std::find(strs.begin(), strs.end(), "auto");
-        ac == strs.end()) {
-      DoAutoCapture = false;
-    } else {
-      strs.erase(ac); // Don't actually look for a variable named "auto"
-    }
-  }
-}
+      ExtraExpressions_(parseKeyword(PragmaStrings, "extra_exressions")),
+      DoAutoCapture_(parseCaptureOptions(VariableNames_)) { }
 
 ExpressionStrings::ExpressionStrings(clang::Expr const *e)
     : spelling(getStmtSpelling(e)) {
@@ -284,15 +310,16 @@ std::string const &ExpressionStrings::getExprSpelling() const {
 
 void SSTMemoizePragma::activate(clang::Stmt *S, clang::Rewriter &R,
                                 PragmaConfig &Cfg) {
-  for (auto Expr : getAllExprs(S, VariableNames_, DoAutoCapture)) {
+  for (auto Expr : getAllExprs(S, VariableNames_, DoAutoCapture_)) {
     ExprStrs_.emplace_back(Expr);
   }
 
   auto ParentDecl = getNonNull(matchers::getParentDecl(S));
   auto FuncName = generateUniqueFunctionName(getStart(S), ParentDecl, "");
 
-  static_capture_decl_ = write_static_capture_variable(FuncName, ExprStrs_);
-  start_capture_definition_ = start_definition(FuncName, ExprStrs_);
+  static_capture_decl_ =
+      write_static_capture_variable(FuncName, ExprStrs_, isOMP());
+  start_capture_definition_ = start_definition(FuncName, ExprStrs_, isOMP());
   stop_capture_definition_ = end_definition(FuncName, ExprStrs_);
 
   R.InsertTextBefore(getStart(ParentDecl),
@@ -309,11 +336,21 @@ void SSTMemoizePragma::activate(clang::Decl *D, clang::Rewriter &R,
                                 PragmaConfig &Cfg) {}
 
 void SSTMemoizePragma::deactivate(PragmaConfig &cfg) {
+  std::string headers = R"lit(
+  #include "capture.h"
+  #if defined(_OPENMP)
+  #include <omp.h>
+  #else
+  #define omp_get_num_threads() 1
+  #define omp_get_proc_bind() 0
+  #endif
+  )lit";
+
   auto &vec = cfg.globalCppFunctionsToWrite;
-  if (std::none_of(vec.begin(), vec.end(), [](auto const &pragma_string) {
-        return pragma_string.second == "#include \"capture.h\"\n";
+  if (std::none_of(vec.begin(), vec.end(), [&](auto const &pragma_string) {
+        return pragma_string.second == headers;
       })) {
-    vec.push_back(std::make_pair(this, "#include \"capture.h\"\n"));
+    vec.push_back(std::make_pair(this, headers));
   }
 
   vec.push_back(std::make_pair(this, static_capture_decl_ + "\n"));
@@ -325,5 +362,5 @@ void SSTMemoizePragma::deactivate(PragmaConfig &cfg) {
 static PragmaRegister<SSTArgMapPragmaShim, memoize::SSTMemoizePragma, true>
     memoizePragma("sst", "memoize", pragmas::MEMOIZE);
 
-static PragmaRegister<SSTArgMapPragmaShim, memoize::SSTMemoizePragma, false>
+static PragmaRegister<SSTArgMapPragmaShim, memoize::SSTMemoizeOMPPragma, false>
     ompMemoizePragma("omp", "parallel", pragmas::MEMOIZE);

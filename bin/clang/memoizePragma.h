@@ -45,6 +45,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #ifndef bin_clang_memoizePragma_h
 #define bin_clang_memoizePragma_h
 
+#include "memoizeVariableCaptureAnalyzer.h"
 #include "pragmas.h"
 
 #include <optional>
@@ -89,12 +90,27 @@ public:
 private:
   std::optional<std::vector<std::string>> VariableNames_;
   std::optional<std::vector<std::string>> ExtraExpressions_;
-  bool DoAutoCapture = true;
+
+  capture::AutoCapture DoAutoCapture_;
   std::vector<ExpressionStrings> ExprStrs_;
+
   std::string static_capture_decl_;
   std::string start_capture_definition_;
   std::string stop_capture_definition_;
+
+  virtual bool isOMP() { return false; }
 };
+
+class SSTMemoizeOMPPragma : public SSTMemoizePragma {
+public:
+  SSTMemoizeOMPPragma(clang::SourceLocation Loc, clang::CompilerInstance &CI,
+                      PragmaArgMap &&PragmaStrings)
+      : SSTMemoizePragma(Loc, CI, std::move(PragmaStrings)) {}
+
+private:
+  bool isOMP() { return true; }
+};
+
 } // namespace memoize
 
 #endif // bin_clang_memoizePragma_h
