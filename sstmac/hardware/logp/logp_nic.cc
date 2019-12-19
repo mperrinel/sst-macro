@@ -55,9 +55,9 @@ Questions? Contact sst-macro-help@sandia.gov
 namespace sstmac {
 namespace hw {
 
-LogPNIC::LogPNIC(SST::Component* parent, SST::Params& params) :
-  next_out_free_(),
-  NIC(parent, params)
+LogPNIC::LogPNIC(uint32_t id, SST::Params& params, Node* node) :
+  NIC(id, params, node),
+  next_out_free_()
 {
   SST::Params inj_params = params.find_scoped_params("injection");
   inj_byte_delay_ = TimeDelta(inj_params.find<SST::UnitAlgebra>("bandwidth").getValue().inverse().toDouble());
@@ -113,19 +113,20 @@ LogPNIC::doSend(NetworkMessage* msg)
 }
 
 void
-LogPNIC::connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link)
+LogPNIC::connectOutput(int  /*src_outport*/, int  /*dst_inport*/, EventLink::ptr&& link)
 {
   logp_link_ = std::move(link);
 }
 
 void
-LogPNIC::connectInput(int src_outport, int dst_inport, EventLink::ptr&& link)
+LogPNIC::connectInput(int /*src_outport*/, int /*dst_inport*/, 
+                      EventLink::ptr&& /*link*/)
 {
   //nothing needed
 }
 
 LinkHandler*
-LogPNIC::payloadHandler(int port)
+LogPNIC::payloadHandler(int  /*port*/)
 {
   return newLinkHandler(this, &NIC::mtlHandle);
 }

@@ -51,20 +51,17 @@ class SSTComputePragma : public SSTPragma {
  public:
   SSTComputePragma(){}
 
-  static void replaceForStmt(clang::ForStmt* stmt, clang::CompilerInstance& CI,
-                             SSTPragmaList& prgList, clang::Rewriter& r,
-                             PragmaConfig& cfg, SkeletonASTVisitor* visitor,
-                             const std::string& nthread);
+  static void replaceForStmt(clang::ForStmt* stmt, const std::string& nthread);
 
  private:
-  void activate(clang::Stmt *stmt, clang::Rewriter &r, PragmaConfig& cfg) override;
-  void activate(clang::Decl* decl, clang::Rewriter& r, PragmaConfig& cfg) override;
-  void defaultAct(clang::Stmt* stmt, clang::Rewriter &r, PragmaConfig& cfg);
-  void visitForStmt(clang::ForStmt* stmt, clang::Rewriter& r, PragmaConfig& cfg);
-  void visitCXXMethodDecl(clang::CXXMethodDecl* decl, clang::Rewriter& r, PragmaConfig& cfg);
-  void visitFunctionDecl(clang::FunctionDecl* decl, clang::Rewriter& r, PragmaConfig& cfg);
-  void visitIfStmt(clang::IfStmt* stmt, clang::Rewriter& r, PragmaConfig& cfg);
-  void visitAndReplaceStmt(clang::Stmt* stmt, clang::Rewriter& r, PragmaConfig& cfg);
+  void activate(clang::Stmt *stmt) override;
+  void activate(clang::Decl* decl) override;
+  void defaultAct(clang::Stmt* stmt);
+  void visitForStmt(clang::ForStmt* stmt);
+  void visitCXXMethodDecl(clang::CXXMethodDecl* decl);
+  void visitFunctionDecl(clang::FunctionDecl* decl);
+  void visitIfStmt(clang::IfStmt* stmt);
+  void visitAndReplaceStmt(clang::Stmt* stmt);
 
   std::string nthread_;
 
@@ -86,93 +83,38 @@ class SSTMemoryPragma : public SSTPragma {
   SSTMemoryPragma(const std::string& memSpec) :
     memSpec_(memSpec){}
  private:
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg);
+  void activate(clang::Stmt *s) override;
   std::string memSpec_;
 };
 
 class SSTLoopCountPragma : public SSTPragma {
  public:
-  SSTLoopCountPragma(const std::string& repl) :
-    loopCount_(repl)
-  {
-  }
+  SSTLoopCountPragma(clang::SourceLocation loc, const std::list<clang::Token>& tokens);
 
   const std::string& count() const {
     return loopCount_;
   }
 
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override {
-    //no activate actions are actually required
-    //other code in computeVisitor.cc will detect this pragma and trigger actions
-  }
+  void activate(clang::Stmt *s) override;
 
-  bool reusable() const override {
+  bool firstPass() const override {
     return true;
   }
 
  private:
+  void transformWhileLoop(clang::Stmt* s);
+  void transformForLoop(clang::Stmt* s);
+  clang::Token loopCountToken_;
   std::string loopCount_;
 };
-
-class SSTMemoizeComputePragma : public SSTPragma
-{
- public:
-  SSTMemoizeComputePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-                          std::map<std::string, std::list<std::string>>&& in_args);
-
-  bool firstPass(const clang::Decl *d) const override {
-    return true;
-  }
-
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override;
-  void activate(clang::Decl *d, clang::Rewriter &r, PragmaConfig &cfg) override;
-
- private:
-  void doReplace(clang::SourceLocation startInsert, clang::SourceLocation finalInsert, clang::Stmt* stmt,
-                 bool insertStartAfter, bool insertFinalAfter,
-                 clang::Rewriter& r, clang::Expr** callArgs, const clang::ParmVarDecl** callParams);
-
-  std::string token_;
-  std::string model_;
-  bool skeletonize_;
-  std::list<std::string> inputs_;
-  bool givenName_;
-  std::list<int> fxnArgInputs_;
-  std::set<clang::Decl*> written_;
-};
-
-class SSTImplicitStatePragma : public SSTPragma
-{
- public:
-  SSTImplicitStatePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-      std::map<std::string, std::list<std::string>>&& in_args);
-
-  bool firstPass(const clang::Decl *d) const override {
-    return true;
-  }
-
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override;
-  void activate(clang::Decl *d, clang::Rewriter &r, PragmaConfig &cfg) override;
-
- private:
-  void doReplace(clang::SourceLocation startInsert, clang::SourceLocation finalInsert,
-                 bool insertStartAfter, bool insertFinalAfter,
-                 clang::Rewriter& r, const std::map<std::string,std::string>& values);
-
-  std::map<std::string,int> fxnArgValues_;
-  std::map<std::string,std::string> values_;
-  std::set<clang::Decl*> written_;
-};
-
 
 class SSTOpenMPParallelPragma : public SSTComputePragma
 {
  public:
   SSTOpenMPParallelPragma(clang::SourceLocation loc,
-                         clang::CompilerInstance& CI,
                          const std::list<clang::Token>& tokens);
  private:
-  std::string numThreads(clang::SourceLocation loc, clang::CompilerInstance& CI,
+  std::string numThreads(clang::SourceLocation loc,
                          const std::list<clang::Token>& tokens);
 };
 

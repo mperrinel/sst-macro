@@ -74,8 +74,8 @@ struct SnapprRequest : public MemoryModel::Request {
   NetworkMessage* payload;
 };
 
-SnapprNIC::SnapprNIC(SST::Component* parent, SST::Params& params) :
-  NIC(parent, params)
+SnapprNIC::SnapprNIC(uint32_t id, SST::Params& params, Node* parent) :
+  NIC(id, params, parent)
 {
   SST::Params inj_params = params.find_scoped_params("injection");
 
@@ -113,7 +113,7 @@ SnapprNIC::SnapprNIC(SST::Component* parent, SST::Params& params) :
 }
 
 void
-SnapprNIC::init(unsigned int phase)
+SnapprNIC::init(unsigned int /*phase*/)
 {
 }
 
@@ -138,7 +138,7 @@ SnapprNIC::payloadHandler(int port)
 }
 
 LinkHandler*
-SnapprNIC::creditHandler(int port)
+SnapprNIC::creditHandler(int  /*port*/)
 {
   return newLinkHandler(this, &SnapprNIC::handleCredit);
 }
@@ -213,9 +213,6 @@ SnapprNIC::doSend(NetworkMessage* payload)
   payload->setInjectionStarted(now());
   inject_queue_->insert(0, payload);
   copyToNicBuffer();
-
-  int vl = payload->qos();
-
 }
 
 void
@@ -317,7 +314,7 @@ SnapprNIC::handleTailPacket(Timestamp done, SnapprPacket* pkt)
 }
 
 void
-SnapprNIC::injectPacket(uint32_t ptk_size, uint64_t byte_offset, NetworkMessage* payload)
+SnapprNIC::injectPacket(uint32_t  /*ptk_size*/, uint64_t byte_offset, NetworkMessage* payload)
 {
   uint64_t bytes_left = payload->byteLength() - byte_offset;
   uint32_t pkt_size = std::min(bytes_left, uint64_t(packet_size_));
@@ -352,7 +349,7 @@ struct FIFOQueue : public SnapprNIC::InjectionQueue {
     "fifo",
     "implements a FIFO strategy for injecting packets")
 
-  FIFOQueue(SST::Params& p){}
+  FIFOQueue(SST::Params&  /*p*/){}
 
   std::pair<uint64_t, NetworkMessage*> top() override {
     return queue_.front();
@@ -435,7 +432,7 @@ struct RoundRobinQueue : public SnapprNIC::InjectionQueue {
     "round_robin",
     "implements a round-robin strategy for injecting packets")
 
-  RoundRobinQueue(SST::Params& p) :
+  RoundRobinQueue(SST::Params&  /*p*/) :
     begin_(0), end_(0), queue_(1024){}
 
   std::pair<uint64_t, NetworkMessage*> top() override {

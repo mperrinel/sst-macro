@@ -79,7 +79,6 @@ JobLauncher::JobLauncher(SST::Params& params, OperatingSystem* os) :
   }
 
   addLaunchRequests(params);
-  os->rebuildMemoizations();
 }
 
 void
@@ -159,9 +158,6 @@ JobLauncher::addLaunchRequests(SST::Params& params)
     initial_requests_.push_back(mgr);
     ++aid;
   }
-
-  //just in case any memoizations were loaded
-  os_->rebuildMemoizations();
 }
 
 void
@@ -222,7 +218,7 @@ DefaultJoblauncher::handleLaunchRequest(AppLaunchRequest* request,
 }
 
 void
-DefaultJoblauncher::stopEventReceived(JobStopRequest *ev)
+DefaultJoblauncher::stopEventReceived(JobStopRequest * /*ev*/)
 {
   os_->decrementAppRefcount();
 }
@@ -240,7 +236,7 @@ ExclusiveJoblauncher::handleLaunchRequest(AppLaunchRequest *request, ordered_nod
 }
 
 void
-ExclusiveJoblauncher::stopEventReceived(JobStopRequest *ev)
+ExclusiveJoblauncher::stopEventReceived(JobStopRequest * /*ev*/)
 {
   active_job_ = nullptr;
   if (!pending_requests_.empty()){

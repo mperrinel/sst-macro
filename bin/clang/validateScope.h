@@ -45,59 +45,20 @@ Questions? Contact sst-macro-help@sandia.gov
 #define bin_clang_validate_scope_h
 
 #include "clangHeaders.h"
-#include "replacements.h"
-#include "recurseAll.h"
 #include "astVisitor.h"
 #include "util.h"
 #include <sstream>
 
-struct VariableScope {
-  clang::SourceLocation start;
-  clang::SourceLocation stop;
-  SkeletonASTVisitor* astContext;
-  bool inScope(const clang::DeclRefExpr* expr){
-    if (astContext->isGlobal(expr)){
-      return true;
-    }
+struct VariableScopeVisitor : public clang::RecursiveASTVisitor<VariableScopeVisitor>
+{
+  VariableScopeVisitor(clang::SourceLocation start, clang::SourceLocation stop) :
+    start_(start), stop_(stop)
+  {
 
-    if (stop.isInvalid()){
-      return false; //well crap, null scope
-    }
-
-    clang::SourceLocation loc = getStart(expr->getFoundDecl());
-    return loc > start && loc < stop;
-  }
-};
-
-struct ValidateScope {
-  bool operator()(const clang::Expr* e, 
-                  ExprRole role, Replacements& repls,
-                  clang::CompilerInstance& CI, 
-                  VariableScope& scope){
-    //if this has been replaced, stop recursing
-    return repls.exprs.find(e) != repls.exprs.end();
   }
 
-  bool operator()(const clang::Stmt* s, 
-                  ExprRole role, Replacements& repls,
-                  clang::CompilerInstance& CI, 
-                  VariableScope& scope){
-    //do nothing
-    return false; //but don't stop recursing
-  }
-
-  bool operator()(const clang::DeclRefExpr* expr, 
-                  ExprRole role, Replacements& repls,
-                  clang::CompilerInstance& CI, 
-                  VariableScope& scope){
+  bool VisitDeclRefExpr(clang::DeclRefExpr* expr){
     const clang::ValueDecl* d = expr->getDecl();
-
-    //this might be already replaced - then we don't need to worry about it
-    if (repls.decls.find(expr->getDecl()) != repls.decls.end()){
-      return false;
-    } else if (repls.exprs.find(expr) != repls.exprs.end()){
-      return true;
-    }
 
     //some types we skip
     switch(d->getKind()){
@@ -107,19 +68,36 @@ struct ValidateScope {
       default: break;
     }
 
-    if (!scope.inScope(expr)){
+    if (!inScope(expr)){
       std::stringstream sstr;
       sstr << "control variable '" << d->getNameAsString()
            << "' declared at "
-           << getStartLocString(d, CI)
+           << getStartLocString(d)
            << " of type " << d->getDeclKindName()
            << " which is inside skeletonized block starting at "
-           << scope.stop.printToString(CI.getSourceManager())
+           << stop_.printToString(CompilerGlobals::SM())
            << " - must use #pragma sst replace";
-      errorAbort(expr, CI, sstr.str());
+      errorAbort(expr, sstr.str());
     }
     return false;
   }
+
+  bool inScope(const clang::DeclRefExpr* expr){
+    if (CompilerGlobals::visitor.skeleton->isGlobal(expr)){
+      return true;
+    }
+
+    if (stop_.isInvalid()){
+      return true; //well crap, null scope
+    }
+
+    clang::SourceLocation loc = getStart(expr->getFoundDecl());
+    return loc > start_ && loc < stop_;
+  }
+
+ private:
+  clang::SourceLocation start_;
+  clang::SourceLocation stop_;
 };
 
 #endif

@@ -44,36 +44,12 @@ Questions? Contact sst-macro-help@sandia.gov
 #include "computeVisitor.h"
 #include "computePragma.h"
 #include "replacePragma.h"
-#include "recurseAll.h"
-#include "printAll.h"
 #include "validateScope.h"
 #include "astVisitor.h"
 
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
-
-struct GlobalVarReplacer
-{
-  bool hasReplacement(const DeclRefExpr* expr){
-    return visitor->isGlobal(const_cast<DeclRefExpr*>(expr));
-  }
-  std::string getReplacement(const DeclRefExpr* expr){
-    return visitor->needGlobalReplacement(const_cast<NamedDecl*>(expr->getFoundDecl()));
-  }
-
-  template <class T>
-  bool hasReplacement(T* t){
-    return false;
-  }
-
-  template <class T>
-  std::string getReplacement(T* t){
-    return "";
-  }
-
-  SkeletonASTVisitor* visitor;
-};
 
 void
 ComputeVisitor::visitAccessDeclRefExpr(DeclRefExpr* expr, MemoryLocation& mloc)
@@ -88,9 +64,9 @@ ComputeVisitor::visitAccessDeclRefExpr(DeclRefExpr* expr, MemoryLocation& mloc)
 }
 
 void
-ComputeVisitor::visitAccessCompoundStmt(CompoundStmt* stmt, Loop::Body& body, MemoryLocation& mloc)
+ComputeVisitor::visitAccessCompoundStmt(CompoundStmt* stmt, Loop::Body&  /*body*/, MemoryLocation&  /*mloc*/)
 {
-  errorAbort(stmt, CI, "visiting compound statement in data flow analysis");
+  errorAbort(stmt, "visiting compound statement in data flow analysis");
 }
 
 void
@@ -177,22 +153,13 @@ void
 ComputeVisitor::visitLoop(ForStmt* stmt, Loop& loop)
 {
   ForLoopSpec spec;
-  auto iter = explicitLoopCounts_.find(stmt);
-  if (iter != explicitLoopCounts_.end()){
-    //the number of loop iterations is given explicitly
-    spec.init = nullptr;
-    spec.predicateMax = nullptr;
-    spec.stride = nullptr;
-    loop.tripCount = iter->second;
-  } else {
-    getInitialVariables(stmt->getInit(), &spec);
-    getPredicateVariables(stmt->getCond(), &spec);
-    getStride(stmt->getInc(), &spec);
-    //validate that the static analysis succeeded
-    validateLoopControlExpr(spec.init);
-    validateLoopControlExpr(spec.predicateMax);
-    loop.tripCount = getTripCount(&spec);
-  }
+  getInitialVariables(stmt->getInit(), &spec);
+  getPredicateVariables(stmt->getCond(), &spec);
+  getStride(stmt->getInc(), &spec);
+  //validate that the static analysis succeeded
+  validateLoopControlExpr(spec.init);
+  validateLoopControlExpr(spec.predicateMax);
+  loop.tripCount = getTripCount(&spec);
 
   //now lets examine the body
   addOperations(stmt->getBody(), loop.body);
@@ -201,7 +168,6 @@ ComputeVisitor::visitLoop(ForStmt* stmt, Loop& loop)
 void
 ComputeVisitor::visitBodyForStmt(ForStmt* stmt, Loop::Body& body)
 {
-  checkStmtPragmas(stmt);
   body.subLoops.emplace_back(body.depth+1);
   visitLoop(stmt, body.subLoops.back());
 }
@@ -209,23 +175,12 @@ ComputeVisitor::visitBodyForStmt(ForStmt* stmt, Loop::Body& body)
 void
 ComputeVisitor::visitBodyWhileStmt(WhileStmt *stmt, Loop::Body &body)
 {
-  checkStmtPragmas(stmt);
-  //treat this as a for loop with a certain trip count
-  auto iter = explicitLoopCounts_.find(stmt);
-  if (iter == explicitLoopCounts_.end()){
-    errorAbort(stmt, CI, "skeletonized while loop has unknown count - use pragma sst loop_count");
-  }
-  //the number of loop iterations is given explicitly
-  body.subLoops.emplace_back(body.depth+1);
-  auto& loop = body.subLoops.back();
-  loop.tripCount = iter->second;
-  addOperations(stmt->getBody(), loop.body);
+  errorAbort(stmt, "skeletonized while loop has unknown count - use pragma sst loop_count");
 }
 
 void
 ComputeVisitor::visitBodyCompoundStmt(CompoundStmt* stmt, Loop::Body& body)
 {
-  checkStmtPragmas(stmt);
   auto end = stmt->child_end();
   for (auto iter=stmt->child_begin(); iter != end; ++iter){
     addOperations(*iter, body);
@@ -249,7 +204,7 @@ ComputeVisitor::visitBodyUnaryOperator(UnaryOperator* op, Loop::Body& body)
         auto pty = ty->getPointeeType();
         if (pty.isVolatileQualified() || ty.isVolatileQualified()){
           //treat this as a new memory access each time
-          TypeInfo ti = CI.getASTContext().getTypeInfo(pty);
+          TypeInfo ti = CompilerGlobals::CI().getASTContext().getTypeInfo(pty);
           body.readBytes += ti.Width / 8;
         }
       }
@@ -300,10 +255,10 @@ ComputeVisitor::visitBodyBinaryOperator(BinaryOperator* op, Loop::Body& body)
         //this better be a template type
         const Type* ty = op->getLHS()->getType().getTypePtr();
         if (!isa<const TemplateTypeParmType>(ty)){
-          errorAbort(op, CI, "binary operator has non-template dependent type");
+          errorAbort(op, "binary operator has non-template dependent type");
         }
       } else {
-        errorAbort(op, CI, "binary operator in skeletonized loop does not operate on int or float types");
+        errorAbort(op, "binary operator in skeletonized loop does not operate on int or float types");
       }
     default:
       break;
@@ -342,7 +297,7 @@ ComputeVisitor::visitBodyArraySubscriptExpr(ArraySubscriptExpr* expr, Loop::Body
             << std::endl; */
   bool newAccess = acc.newAccess(mloc.maxGen, currentGeneration, isLHS);
   if (newAccess){
-    TypeInfo ti = CI.getASTContext().getTypeInfo(expr->getType());
+    TypeInfo ti = CompilerGlobals::CI().getASTContext().getTypeInfo(expr->getType());
     //std::cout << "sizeof(" << expr->getType()->getTypeClassName()
     //          << ")=" << ti.Width << std::endl;
 
@@ -354,7 +309,7 @@ ComputeVisitor::visitBodyArraySubscriptExpr(ArraySubscriptExpr* expr, Loop::Body
 
 
 void
-ComputeVisitor::visitBodyDeclRefExpr(DeclRefExpr* expr, Loop::Body& body, bool isLHS)
+ComputeVisitor::visitBodyDeclRefExpr(DeclRefExpr* expr, Loop::Body&  /*body*/, bool isLHS)
 {
   NamedDecl* decl = expr->getFoundDecl();
   Variable& var = getVariable(decl);
@@ -389,7 +344,7 @@ ComputeVisitor::visitBodyCallExpr(CallExpr* expr, Loop::Body& body)
       if (!callee->getBody()){
         std::string error = "template instance of function "
             + td->getNameAsString() + " not generated by compiler";
-        errorAbort(expr, CI, error);
+        errorAbort(expr, error);
       } else {
         //the new scope start is beginning of function
         scopeStartLine = getStart(callee);
@@ -401,7 +356,7 @@ ComputeVisitor::visitBodyCallExpr(CallExpr* expr, Loop::Body& body)
         std::stringstream sstr;
         sstr << "non-inlineable function '" << callee->getNameAsString()
              << "' inside compute-intensive code";
-        warn(getStart(expr), CI, sstr.str());
+        warn(getStart(expr), sstr.str());
       } else {
         //the new scope start is beginning of function
         scopeStartLine = getStart(callee);
@@ -409,70 +364,26 @@ ComputeVisitor::visitBodyCallExpr(CallExpr* expr, Loop::Body& body)
       }
     }
   } else {
-    warn(getStart(expr), CI,
-               "non-inlinable function inside compute-intensive code");
+    warn(getStart(expr), "non-inlinable function inside compute-intensive code");
   }
   //reset back to the parent scope
   scopeStartLine = saveScope;
 }
 
 void
-ComputeVisitor::checkStmtPragmas(Stmt* s)
-{
-  auto matches = pragmas.getMatches(s);
-  if (!matches.empty()){
-    SSTPragma* prg = matches.front();
-    if (prg->classId == prg->id<SSTReplacePragma>()){
-      SSTReplacePragma* rprg = static_cast<SSTReplacePragma*>(prg);
-      std::list<const Expr*> replaced;
-      rprg->run(s, replaced);
-      for (auto e : replaced){
-        repls.exprs[e] = rprg->replacement();
-      }
-    } else if (prg->classId == prg->id<SSTLoopCountPragma>()){
-      SSTLoopCountPragma* rprg = static_cast<SSTLoopCountPragma*>(prg);
-      switch(s->getStmtClass()){
-        case Stmt::ForStmtClass:
-        case Stmt::WhileStmtClass:
-          explicitLoopCounts_[s] = rprg->count();
-          break;
-        default:
-          errorAbort(s, CI, "pragma loop_count not applied to for loop");
-          break;
-      }
-    } else {
-      errorAbort(s, CI, "invalid pragma applied to statement");
-    }
-  }
-}
-
-void
 ComputeVisitor::visitBodyIfStmt(IfStmt *stmt, Loop::Body &body)
 {
-  auto matches = pragmas.getMatches(stmt);
-  //by default, always assume an if statement is false
-  if (matches.empty()){
-    warn(stmt, CI, "if-stmt inside compute block has no prediction hint - assuming always false");
+  auto iter = CompilerGlobals::astNodeMetadata.predicatedBlocks.find(stmt);
+  if (iter == CompilerGlobals::astNodeMetadata.predicatedBlocks.end()){
+    warn(stmt, "if-stmt inside compute block has no prediction hint - assuming always false");
     if (stmt->getElse()){
       addOperations(stmt->getElse(), body);
     }
-    return;
-  }
-
-  if (matches.size() > 1){
-    for (SSTPragma* prg : matches){
-      prg->print();
-    }
-    errorAbort(stmt, CI, "if-stmt inside compute block should have a single prediction hint,"
-               "multiple pragmas found");
-  }
-
-  SSTPragma* prg = matches.front();
-  if (prg->classId == prg->id<SSTBranchPredictPragma>()){
-    SSTBranchPredictPragma* bprg = static_cast<SSTBranchPredictPragma*>(prg);
-    if (bprg->prediction() == "true"){
+  } else {
+    std::string predicate = iter->second;
+    if (predicate == "true"){
       addOperations(stmt->getThen(), body);
-    } else if (bprg->prediction() == "false"){
+    } else if (predicate == "false") {
       if (stmt->getElse()){
         addOperations(stmt->getElse(), body);
       }
@@ -481,18 +392,16 @@ ComputeVisitor::visitBodyIfStmt(IfStmt *stmt, Loop::Body &body)
       body.subLoops.emplace_back(body.depth+1);
       Loop& thenLoop = body.subLoops.back();
       thenLoop.tripCount = "1";
-      thenLoop.body.branchPrediction = bprg->prediction();
+      thenLoop.body.branchPrediction = predicate;
       addOperations(stmt->getThen(), thenLoop.body);
       if (stmt->getElse()){
         body.subLoops.emplace_back(body.depth+1);
         Loop& elseLoop = body.subLoops.back();
         elseLoop.tripCount = "1";
-        elseLoop.body.branchPrediction = "1-(" + bprg->prediction() + ")";
+        elseLoop.body.branchPrediction = "1-(" + predicate + ")";
         addOperations(stmt->getElse(), elseLoop.body);
       }
     }
-  } else {
-    errorAbort(stmt, CI, "only branch prediction pragmas should be applied to if-stmt");
   }
 }
 
@@ -516,14 +425,6 @@ ComputeVisitor::visitBodyDeclStmt(DeclStmt* stmt, Loop::Body& body)
   }
   Decl* d = stmt->getSingleDecl();
   if (d){
-    auto matches = pragmas.getMatches(stmt);
-    if (!matches.empty()){
-     SSTPragma* prg = matches.front();
-      if (prg->classId == prg->id<SSTReplacePragma>()){
-        SSTReplacePragma* rprg = static_cast<SSTReplacePragma*>(prg);
-        repls.decls[d] = rprg->replacement();
-      }
-    }
     if (isa<VarDecl>(d)){
       VarDecl* vd = cast<VarDecl>(d);
       if (vd->hasInit()){
@@ -589,7 +490,7 @@ ComputeVisitor::visitStrideUnaryOperator(clang::UnaryOperator* op, ForLoopSpec* 
       spec->increment = false;
       break;
     default:
-      errorAbort(op, CI, "got unary operator that's not a ++/-- increment");
+      errorAbort(op, "got unary operator that's not a ++/-- increment");
   }
 }
 
@@ -605,7 +506,7 @@ ComputeVisitor::getStride(Stmt* stmt, ForLoopSpec* spec)
     for_case(Stride,CompoundAssignOperator,stmt,spec);
     for_case(Stride,UnaryOperator,stmt,spec);
     default:
-      errorAbort(stmt, CI, "bad incrementer expression for skeletonization");
+      errorAbort(stmt, "bad incrementer expression for skeletonization");
   }
 }
 
@@ -615,7 +516,7 @@ ComputeVisitor::getPredicateVariables(Expr* expr, ForLoopSpec* spec)
   switch(expr->getStmtClass()){
     for_case(Predicate,BinaryOperator,expr,spec);
     default:
-      errorAbort(expr, CI, "skeletonized predicates mut be basic binary ops");
+      errorAbort(expr, "skeletonized predicates mut be basic binary ops");
   }
 }
 
@@ -626,7 +527,7 @@ ComputeVisitor::getInitialVariables(Stmt* stmt, ForLoopSpec* spec)
     for_case(Initial,DeclStmt,stmt,spec);
     for_case(Initial,BinaryOperator,stmt,spec);
     default:
-      errorAbort(stmt, CI, "bad initial expression for skeletonization");
+      errorAbort(stmt, "bad initial expression for skeletonization");
   }
 }
 #undef for_case
@@ -636,13 +537,9 @@ ComputeVisitor::validateLoopControlExpr(Expr* rhs)
 {
   //we may have issues if the rhs references variables
   //that are scoped inside the loop
-  VariableScope scope;
-  scope.astContext = context;
-  scope.start = getStart(context->getTopLevelScope());
-  //this is the START of the compute block
-  //but also the END of the allowed scope for usable variables
-  scope.stop = scopeStartLine;
-  recurseAll<ValidateScope,NullVisit>(rhs, repls, CI, scope);
+  SourceLocation start = getStart(CompilerGlobals::visitor.skeleton->getTopLevelScope());
+  VariableScopeVisitor scope{start, scopeStartLine};
+  scope.TraverseStmt(rhs);
 }
 
 void
@@ -670,10 +567,10 @@ void
 ComputeVisitor::visitInitialDeclStmt(clang::DeclStmt* stmt, ForLoopSpec* spec)
 {
   if (!stmt->isSingleDecl()){
-    errorAbort(stmt, CI, "skeleton for loop initializer is not single declaration");
+    errorAbort(stmt, "skeleton for loop initializer is not single declaration");
   }
   if (!isa<VarDecl>(stmt->getSingleDecl())){
-    errorAbort(stmt, CI, "declaration statement does not declare a variable");
+    errorAbort(stmt, "declaration statement does not declare a variable");
   }
   VarDecl* var = cast<VarDecl>(stmt->getSingleDecl());
   spec->incrementer = var;
@@ -687,7 +584,7 @@ ComputeVisitor::visitInitialBinaryOperator(clang::BinaryOperator* op, ForLoopSpe
     op->dump();
     std::string error = std::string("skeletonized loop initializer is not simple assignment: got ")
                                     + op->getLHS()->getStmtClassName();
-    errorAbort(op, CI, error);
+    errorAbort(op, error);
   } else {
     DeclRefExpr* dre = cast<DeclRefExpr>(op->getLHS());
     spec->incrementer = dre->getFoundDecl();
@@ -695,45 +592,17 @@ ComputeVisitor::visitInitialBinaryOperator(clang::BinaryOperator* op, ForLoopSpe
   spec->init = op->getRHS();
 }
 
-
-bool
-ComputeVisitor::checkPredicateMax(Expr* max, std::ostream& os)
-{
-  auto iter = repls.exprs.find(max);
-  if (iter != repls.exprs.end()){
-    os << iter->second;
-    return true;
-  }
-
-  //we might have overriden a declaration
-  if (max->getStmtClass() == Stmt::DeclRefExprClass){
-    DeclRefExpr* dref = cast<DeclRefExpr>(max);
-    auto iter = repls.decls.find(dref->getDecl());
-    if (iter != repls.decls.end()){
-      os << iter->second;
-      return true;
-    }
-  }
-
-  return false;
-}
-
 std::string
 ComputeVisitor::getTripCount(ForLoopSpec* spec)
 {
+  auto* context = CompilerGlobals::visitor.skeleton;
   Expr* max = spec->increment ? spec->predicateMax : spec->init;
   Expr* min = spec->increment ? spec->init : spec->predicateMax;
-
-  GlobalVarReplacer repl;
-  repl.visitor = this->context;
 
   std::stringstream os;
   os << "((";
   if (max){
-    bool specialReplace = checkPredicateMax(max,os);
-    if (!specialReplace){
-      printAll(max,os,repl);
-    }
+    os << context->printWithGlobalsReplaced(max);
   } else {
     os << "0";
   }
@@ -741,13 +610,13 @@ ComputeVisitor::getTripCount(ForLoopSpec* spec)
   if (min){
     os << "-";
     os << "(";
-    printAll(min,os,repl);
+    os << context->printWithGlobalsReplaced(min);
     os << ")";
   }
   os << ")";
   if (spec->stride){
     os << "/ (";
-    printAll(spec->stride,os,repl);
+    os << context->printWithGlobalsReplaced(spec->stride);
     os << ")";
   }
   return os.str();
@@ -796,22 +665,22 @@ ComputeVisitor::setContext(Stmt* stmt){
 }
 
 void
-ComputeVisitor::replaceStmt(Stmt* stmt, Rewriter& r, Loop& loop, PragmaConfig& cfg,
-                            const std::string& nthread)
+ComputeVisitor::replaceStmt(Stmt* stmt, Loop& loop, const std::string& nthread)
 {
   std::stringstream sstr;
   sstr << "{ uint64_t flops=0; uint64_t readBytes=0; uint64_t writeBytes=0; uint64_t intops=0; ";
   addLoopContribution(sstr, loop);
-  if (cfg.computeMemorySpec.size() != 0){
-    //overwrite the static analysis
-    sstr << "readBytes=" << cfg.computeMemorySpec << ";";
+  auto iter = CompilerGlobals::astNodeMetadata.computeMemoryOverrides.find(stmt);
+  if (iter != CompilerGlobals::astNodeMetadata.computeMemoryOverrides.end()){
+    sstr << "readBytes=" << iter->second << ";";
   }
+
   if (nthread.empty()){
     sstr << "sstmac_compute_detailed(flops,intops,readBytes); }";
   } else {
     sstr << "sstmac_compute_detailed_nthr(flops,intops,readBytes,"
          << nthread << "); }";
   }
-  replace(stmt,r,sstr.str(),CI);
+  replace(stmt,sstr.str());
 }
 

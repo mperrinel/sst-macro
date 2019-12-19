@@ -89,140 +89,23 @@ class OperatingSystem : public SubComponent
 
  public:
 #if SSTMAC_INTEGRATED_SST_CORE
-  SST_ELI_REGISTER_SUBCOMPONENT(
+  SST_ELI_REGISTER_SUBCOMPONENT_API(sstmac::sw::OperatingSystem,
+                                    hw::Node*)
+
+  SST_ELI_REGISTER_SUBCOMPONENT_DERIVED(
     OperatingSystem,
     "macro",
     "os",
     SST_ELI_ELEMENT_VERSION(1,0,0),
     "the operating system for a node",
-    "OS")
+    sstmac::sw::OperatingSystem
+  )
 #endif
-
-  struct ImplicitState {
-    SST_ELI_DECLARE_BASE(ImplicitState)
-    SST_ELI_DECLARE_DEFAULT_INFO()
-    SST_ELI_DECLARE_CTOR(SST::Params&)
-
-    ImplicitState(SST::Params& params){}
-
-    virtual ~ImplicitState(){}
-
-    virtual void setState(int type, int value) = 0;
-    virtual void unsetState(int type) = 0;
-  };
-
-  struct RegressionModel :
-      public SST::Statistics::MultiStatistic<int,int,const double[],OperatingSystem::ImplicitState*>
-  {
-    using Parent = SST::Statistics::MultiStatistic<int,int,const double[],OperatingSystem::ImplicitState*>;
-    SST_ELI_DECLARE_BASE(RegressionModel)
-    SST_ELI_DECLARE_DEFAULT_INFO()
-    SST_ELI_DECLARE_CTOR(SST::BaseComponent*, const std::string&,
-                          const std::string&, SST::Params&)
-
-    RegressionModel(SST::BaseComponent* comp, const std::string& name,
-                    const std::string& subName, SST::Params& params)
-     : Parent(comp, name, subName, params), key_(name) { }
-
-    const std::string& key() const {
-      return key_;
-    }
-
-    /**
-     * @brief compute
-     * @param n_params
-     * @param params
-     * @param states A list of discrete states (that can be modified)
-     * @return The time to compute
-     */
-    virtual double compute(int n_params, const double params[],
-                           OperatingSystem::ImplicitState* state) = 0;
-
-    /**
-     * @brief start_collection
-     * @return A tag for matching thread-local storage later
-     */
-    virtual int startCollection() = 0;
-
-    virtual void finishCollection(int thr_tag, int n_params, const double params[],
-                                   OperatingSystem::ImplicitState* state) = 0;
-
-    void addData_impl(int tag, int n, const double params[],
-                      OperatingSystem::ImplicitState* state) override {
-      finishCollection(tag, n, params, state);
-    }
-
-   private:
-    std::string key_;
-  };
-
-  template <class Sample>
-  struct ThreadSafeTimerModel : public RegressionModel
-  {
-    ThreadSafeTimerModel(SST::Params& params, SST::BaseComponent* comp,
-                         const std::string& name, const std::string& subName) :
-      RegressionModel(comp, name, subName, params),
-      free_slots_(100), timers_(100)
-    {
-      for (int i=0; i < free_slots_.size(); ++i) free_slots_[i] = i;
-    }
-
-    int start(){
-      int slot = allocateSlot();
-      timers_[slot] = sstmacWallTime();
-      return slot;
-    }
-
-    template <class... Args>
-    void finish(int thr_tag, Args&&... args){
-      double timer = sstmacWallTime();
-      double t_total = timer - timers_[thr_tag];
-      lock();
-      samples_.emplace_back(std::forward<Args>(args)..., t_total);
-      freeSlotNoLock(thr_tag);
-      unlock();
-    }
-
-   protected:
-    std::vector<Sample> samples_;
-
-    void lock(){
-      lock_.lock();
-    }
-
-    void unlock(){
-      lock_.unlock();
-    }
-
-   private:
-    int allocateSlot(){
-      lock_.lock();
-      int slot = free_slots_.back();
-      free_slots_.pop_back();;
-      lock_.unlock();
-      return slot;
-    }
-
-    void freeSlot(int slot) {
-      lock_.lock();
-      free_slots_.push_back(slot);
-      lock_.unlock();
-    }
-
-    void freeSlotNoLock(int slot){
-      free_slots_.push_back(slot);
-    }
-
-    std::vector<double> timers_;
-    thread_lock lock_;
-    std::vector<int> free_slots_;
-  };
-
-  OperatingSystem(SST::Component* parent, SST::Params& params);
+  OperatingSystem(uint32_t id, SST::Params& params, hw::Node* parent);
 
   virtual ~OperatingSystem();
 
-  std::string toString() const {
+  std::string toString() const override {
     return "operating system";
   }
 
@@ -268,8 +151,6 @@ class OperatingSystem : public SubComponent
   static void setGdbHold(bool flag){
     hold_for_gdb_ = flag;
   }
-
-  static void addMemoization(const std::string& model, const std::string& name);
 
   /**
    * @brief execute Execute a compute function.
@@ -335,8 +216,6 @@ class OperatingSystem : public SubComponent
 
   void scheduleThreadDeletion(Thread* thr);
 
-  void rebuildMemoizations();
-
   /**
    * @brief start_app
    * Similar to start_thread, but performs special operations associated
@@ -363,8 +242,6 @@ class OperatingSystem : public SubComponent
   Library* lib(const std::string& name) const;
 
   void printLibs(std::ostream& os = std::cout) const;
-
-  ImplicitState* getImplicitState();
 
   hw::Node* node() const {
     return node_;
@@ -432,10 +309,6 @@ class OperatingSystem : public SubComponent
 
   static void gdbReset();
 
-  static int startMemoize(const char* token, const char* model);
-  static void computeMemoize(const char* token, int n_params, double params[]);
-  static void stopMemoize(int thr_tag, const char* token, int n_params, double params[]);
-
  private:
   ThreadContext* activeContext();
 
@@ -455,7 +328,8 @@ class OperatingSystem : public SubComponent
 
   struct CoreAllocateGuard {
     CoreAllocateGuard(OperatingSystem* os, Thread* thr) :
-      thr_(thr), os_(os)
+      os_(os),
+      thr_(thr)
     {
       os->allocateCore(thr);
     }
@@ -470,7 +344,7 @@ class OperatingSystem : public SubComponent
 
 
  private:
-  friend class CoreAllocateGuard;
+  friend struct CoreAllocateGuard;
   void allocateCore(Thread* thr);
   void deallocateCore(Thread* thr);
 
@@ -493,9 +367,6 @@ class OperatingSystem : public SubComponent
   SST::Params params_;
 
   ComputeScheduler* compute_sched_;
-
-  static std::map<std::string, std::unique_ptr<RegressionModel>> memoize_models_;
-  static std::unique_ptr<std::map<std::string, std::string>> memoize_init_;
 
   static std::unordered_map<uint32_t, Thread*> all_threads_;
   static bool hold_for_gdb_;

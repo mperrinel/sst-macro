@@ -44,10 +44,8 @@ Questions? Contact sst-macro-help@sandia.gov
 
 #include "computePragma.h"
 #include "computeVisitor.h"
-#include "recurseAll.h"
 #include "dataFlow.h"
 #include "computeLoops.h"
-#include "replacements.h"
 #include "validateScope.h"
 #include <sstream>
 
@@ -55,356 +53,244 @@ using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
 
-void
-SSTComputePragma::visitAndReplaceStmt(Stmt* stmt, Rewriter& r, PragmaConfig& cfg)
+#if CLANG_VERSION_MAJOR >= 7
+  #define UnaryOperatorCtor(...) UnaryOperator(__VA_ARGS__, false)
+#else
+  #define UnaryOperatorCtor(...) UnaryOperator(__VA_ARGS__)
+#endif
+
+SSTLoopCountPragma::SSTLoopCountPragma(SourceLocation loc, const std::list<clang::Token>& tokens)
 {
-  Loop loop(0); //just treat this is a loop of size 1
-  loop.tripCount = "1";
-  ComputeVisitor vis(*CI, *pragmaList, nullptr, cfg.astVisitor);
-  vis.setContext(stmt);
-  vis.addOperations(stmt,loop.body);
-  vis.replaceStmt(stmt,r,loop,cfg, nthread_);
+  if (tokens.size() != 1){
+    errorAbort(loc, "loop_count pragma should taken a single token as the pragma argument");
+  }
+  loopCountToken_ = tokens.front();
+  loopCount_ = getSingleString(tokens);
 }
 
 void
-SSTComputePragma::activate(Stmt *stmt, Rewriter &r, PragmaConfig& cfg)
+SSTLoopCountPragma::transformWhileLoop(Stmt* s)
 {
-#define scase(type,s,rw,cfg) \
+  WhileStmt* ws = cast<WhileStmt>(s);
+  FunctionDecl* fd = CompilerGlobals::astContextLists.enclosingFunctionDecls.back();
+  Expr* loop_count = tokenToExpr(fd, loopCountToken_, getStart(ws->getCond()));
+  IdentifierInfo* II = &CompilerGlobals::CI().getPreprocessor().getIdentifierTable().get("loop_variable");
+  TypeSourceInfo *TInfo = fd->getASTContext().getTrivialTypeSourceInfo(loop_count->getType(), getStart(ws->getCond()));
+  VarDecl* loopVar = VarDecl::Create(fd->getASTContext(), fd,
+                                     getStart(ws->getCond()), getEnd(ws->getCond()),
+                                     II, fd->getASTContext().IntTy, TInfo,
+                                     SC_None);
+  llvm::APInt api(32,0,true);
+  IntegerLiteral* zero = IntegerLiteral::Create(fd->getASTContext(), api,
+                                                fd->getASTContext().IntTy, getEnd(ws->getCond()));
+  loopVar->setInit(zero);
+  DeclGroupRef dgr(loopVar);
+  DeclStmt* init_stmt = new (fd->getASTContext()) DeclStmt(dgr, getStart(ws->getCond()), getEnd(ws->getCond()));
+
+  DeclRefExpr* cond_ref = DeclRefExpr::Create(
+     fd->getASTContext(),
+     loopVar->getQualifierLoc(),
+     SourceLocation(),
+     loopVar,
+     false,
+     getStart(ws->getCond()),
+     loopVar->getType(),
+     VK_LValue,
+     loopVar);
+
+  BinaryOperator* cond_stmt = new (fd->getASTContext()) BinaryOperator(cond_ref, loop_count, BO_LT,
+                                             fd->getASTContext().IntTy, VK_RValue,
+                                             OK_Ordinary, getStart(ws->getCond()), FPOptions());
+
+  DeclRefExpr* inc_ref = DeclRefExpr::Create(
+     fd->getASTContext(),
+     loopVar->getQualifierLoc(),
+     SourceLocation(),
+     loopVar,
+     false,
+     getStart(ws->getCond()),
+     loopVar->getType(),
+     VK_LValue,
+     loopVar);
+
+
+  UnaryOperator* inc_stmt = new (fd->getASTContext()) UnaryOperatorCtor(inc_ref, UO_PostInc, loop_count->getType(),
+                                                          VK_RValue, OK_Ordinary, getStart(ws->getCond()));
+
+  ForStmt* fs = new (fd->getASTContext()) ForStmt(fd->getASTContext(), init_stmt, cond_stmt, loopVar, inc_stmt,
+                     ws->getBody(), getStart(ws), getStart(ws->getCond()), getEnd(ws->getCond()));
+
+  auto iter = CompilerGlobals::astContextLists.findStmtBlockMatch(ws);
+  if (iter == CompilerGlobals::astContextLists.currentStmtBlockEnd()){
+    internalError(ws, "while-stmt is not part of an enclosing CompountStmt");
+  }
+  *iter = fs;
+}
+
+void
+SSTLoopCountPragma::transformForLoop(Stmt* s)
+{
+  ForStmt* fs = cast<ForStmt>(s);
+  FunctionDecl* fd = CompilerGlobals::astContextLists.enclosingFunctionDecls.back();
+  Expr* loop_count = tokenToExpr(fd, loopCountToken_, getStart(fs->getCond()));
+  IdentifierInfo* II = &CompilerGlobals::CI().getPreprocessor().getIdentifierTable().get("loop_variable");
+  TypeSourceInfo *TInfo = fd->getASTContext().getTrivialTypeSourceInfo(loop_count->getType(), getStart(fs->getInit()));
+  VarDecl* loopVar = VarDecl::Create(fd->getASTContext(), fd,
+                                     getStart(fs->getInit()), getEnd(fs->getInit()),
+                                     II, fd->getASTContext().IntTy, TInfo,
+                                     SC_None);
+  llvm::APInt api(32,0,true);
+  IntegerLiteral* zero = IntegerLiteral::Create(fd->getASTContext(), api,
+                                                fd->getASTContext().IntTy, getEnd(fs->getInit()));
+  loopVar->setInit(zero);
+  DeclGroupRef dgr(loopVar);
+  DeclStmt* init_stmt = new (fd->getASTContext()) DeclStmt(dgr, getStart(fs->getInit()), getEnd(fs->getInit()));
+
+  DeclRefExpr* cond_ref = DeclRefExpr::Create(
+     fd->getASTContext(),
+     loopVar->getQualifierLoc(),
+     SourceLocation(),
+     loopVar,
+     false,
+     getStart(fs->getCond()),
+     loopVar->getType(),
+     VK_LValue,
+     loopVar);
+
+  BinaryOperator* cond_stmt = new (fd->getASTContext()) BinaryOperator(cond_ref, loop_count, BO_LT,
+                                             fd->getASTContext().IntTy, VK_RValue,
+                                             OK_Ordinary, getStart(fs->getCond()), FPOptions());
+
+  DeclRefExpr* inc_ref = DeclRefExpr::Create(
+     fd->getASTContext(),
+     loopVar->getQualifierLoc(),
+     SourceLocation(),
+     loopVar,
+     false,
+     getStart(fs->getInc()),
+     loopVar->getType(),
+     VK_LValue,
+     loopVar);
+
+  UnaryOperator* inc_stmt = new (fd->getASTContext()) UnaryOperatorCtor(inc_ref, UO_PostInc, loop_count->getType(),
+                                                          VK_RValue, OK_Ordinary, getStart(fs->getInc()));
+
+  fs->setInit(init_stmt);
+  fs->setCond(cond_stmt);
+  fs->setInc(inc_stmt);
+  fs->setConditionVariable(fd->getASTContext(), loopVar);
+}
+
+void
+SSTLoopCountPragma::activate(Stmt *s)
+{
+  if (isa<WhileStmt>(s)){
+    transformWhileLoop(s);
+  } else if (isa<ForStmt>(s)){
+    transformForLoop(s);
+  } else {
+    errorAbort(s, "loop_count pragma not applied to ForStmt or WhileStmt");
+  }
+}
+
+void
+SSTComputePragma::visitAndReplaceStmt(Stmt* stmt)
+{
+  Loop loop(0); //just treat this is a loop of size 1
+  loop.tripCount = "1";
+  ComputeVisitor vis{};
+  vis.setContext(stmt);
+  vis.addOperations(stmt,loop.body);
+  vis.replaceStmt(stmt,loop,nthread_);
+}
+
+void
+SSTComputePragma::activate(Stmt *stmt)
+{
+#define scase(type,s) \
   case(clang::Stmt::type##Class): \
-    visit##type(clang::cast<type>(s),rw,cfg); break
+    visit##type(clang::cast<type>(s)); break
   switch(stmt->getStmtClass()){
-    scase(ForStmt,stmt,r,cfg);
-    scase(IfStmt,stmt,r,cfg);
+    scase(ForStmt,stmt);
+    scase(IfStmt,stmt);
     default:
-      defaultAct(stmt,r,cfg);
+      defaultAct(stmt);
       break;
   }
 #undef scase
-  cfg.computeMemorySpec = ""; //clear any specs
   throw StmtDeleteException(stmt);
 }
 
 void
-SSTComputePragma::activate(Decl* d, Rewriter& r, PragmaConfig& cfg)
+SSTComputePragma::activate(Decl* d)
 {
-#define dcase(type,d,rw,cfg) \
+#define dcase(type,d) \
   case(clang::Decl::type): \
-    visit##type##Decl(clang::cast<type##Decl>(d),rw,cfg); break
+    visit##type##Decl(clang::cast<type##Decl>(d)); break
   switch(d->getKind()){
-    dcase(Function,d,r,cfg);
-    dcase(CXXMethod,d,r,cfg);
+    dcase(Function,d);
+    dcase(CXXMethod,d);
     default:
       break;
   }
 #undef dcase
-  cfg.computeMemorySpec = ""; //clear any specs
   throw DeclDeleteException(d);
 }
 
 void
-SSTComputePragma::defaultAct(Stmt *stmt, Rewriter &r, PragmaConfig& cfg)
+SSTComputePragma::defaultAct(Stmt *stmt)
 {
-  visitAndReplaceStmt(stmt, r, cfg);
+  visitAndReplaceStmt(stmt);
 }
 
 
 void
-SSTComputePragma::visitCXXMethodDecl(CXXMethodDecl* decl, Rewriter& r, PragmaConfig& cfg)
+SSTComputePragma::visitCXXMethodDecl(CXXMethodDecl* decl)
 {
   if (decl->hasBody()){
-    visitAndReplaceStmt(decl->getBody(), r, cfg);
+    visitAndReplaceStmt(decl->getBody());
   }
 }
 
 void
-SSTComputePragma::visitFunctionDecl(FunctionDecl* decl, Rewriter& r, PragmaConfig& cfg)
+SSTComputePragma::visitFunctionDecl(FunctionDecl* decl)
 {
   if (decl->hasBody()){
-    visitAndReplaceStmt(decl->getBody(), r, cfg);
+    visitAndReplaceStmt(decl->getBody());
   }
 }
 
 
 void
-SSTComputePragma::visitIfStmt(IfStmt* stmt, Rewriter& r, PragmaConfig& cfg)
+SSTComputePragma::visitIfStmt(IfStmt* stmt)
 {
-  visitAndReplaceStmt(stmt->getThen(), r, cfg);
+  visitAndReplaceStmt(stmt->getThen());
   if (stmt->getElse()){
-    visitAndReplaceStmt(stmt->getElse(), r, cfg);
+    visitAndReplaceStmt(stmt->getElse());
   }
 }
 
 void
-SSTComputePragma::replaceForStmt(clang::ForStmt* stmt, CompilerInstance& CI, SSTPragmaList& prgList,
-                                 Rewriter& r, PragmaConfig& cfg, SkeletonASTVisitor* visitor,
-                                 const std::string& nthread)
+SSTComputePragma::replaceForStmt(clang::ForStmt* stmt, const std::string& nthread)
 {
-  visitor->appendComputeLoop(stmt);
-  ComputeVisitor vis(CI, prgList, nullptr, visitor); //null, no parent
+  ComputeVisitor vis{}; //null, no parent
   Loop loop(0); //depth zeros
   vis.setContext(stmt);
   vis.visitLoop(stmt,loop);
-  vis.replaceStmt(stmt,r,loop,cfg, nthread);
+  vis.replaceStmt(stmt,loop,nthread);
   //cfg.skipNextStmt = true;
-  visitor->popComputeLoop();
 }
 
 void
-SSTComputePragma::visitForStmt(ForStmt *stmt, Rewriter &r, PragmaConfig& cfg)
+SSTComputePragma::visitForStmt(ForStmt *stmt)
 {
-  replaceForStmt(stmt, *CI, *pragmaList, r, cfg, cfg.astVisitor, nthread_);
+  replaceForStmt(stmt, nthread_);
 }
 
 void
-SSTMemoizeComputePragma::doReplace(SourceLocation startInsert, SourceLocation finalInsert, Stmt* fullStmt,
-                                   bool insertStartAfter, bool insertFinalAfter,
-                                   Rewriter& r, Expr** callArgs, const ParmVarDecl** callParams)
+SSTMemoryPragma::activate(Stmt *s)
 {
-  std::string argsStr;
-  if (!fxnArgInputs_.empty()){
-    if (!callArgs && !callParams){
-      internalError(startInsert, *CI,
-           "have function args, but no call args or call params");
-    }
-    //this better be a function call
-    PrettyPrinter pp;
-    for (int idx : fxnArgInputs_){
-      pp.os << ",";
-      if (callArgs) pp.print(callArgs[idx]);
-      else          pp.os << callParams[idx]->getNameAsString();
-    }
-    argsStr = pp.str();
-  } else if (!inputs_.empty()) {
-    std::stringstream args_sstr;
-    for (auto& str : inputs_){
-      args_sstr << "," << str;
-    }
-    argsStr = args_sstr.str();
-  }
-
-  if (visitor->mode() == pragmas::MEMOIZE_MODE){
-    PresumedLoc ploc = CI->getSourceManager().getPresumedLoc(startInsert);
-    int line = ploc.getLine();
-
-    std::stringstream start_sstr;
-    start_sstr << "int sstmac_thr_tag" << line << " = sstmac_start_memoize("
-       << "\"" << token_ << "\",\"" << model_ << "\"" << "); ";
-    r.InsertText(startInsert, start_sstr.str(), insertStartAfter);
-    std::stringstream finish_sstr;
-    finish_sstr << "; sstmac_finish_memoize" << inputs_.size() << "("
-                << "sstmac_thr_tag" << line << ","
-                << "\"" << token_ << "\"" << argsStr << ");";
-
-    if (insertFinalAfter) finalInsert = finalInsert.getLocWithOffset(1);
-    r.InsertText(finalInsert, finish_sstr.str(), insertFinalAfter);
-  } else {
-    std::stringstream sstr;
-    sstr << "{ sstmac_compute_memoize" << inputs_.size() << "("
-       << "\"" << token_ << "\"" << argsStr << "); }";
-    if (skeletonize_){
-      SourceRange rng(startInsert, finalInsert);
-      replace(rng, r, sstr.str(), *CI);
-      throw StmtDeleteException(fullStmt);
-    } else {
-      r.InsertText(startInsert, sstr.str(), insertStartAfter);
-    }
-  }
-}
-
-void
-SSTMemoizeComputePragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
-{
-  Expr** args = nullptr;
-  if (!fxnArgInputs_.empty()){
-    CallExpr* expr = nullptr;
-    switch (s->getStmtClass()){
-    case Stmt::CallExprClass:
-    case Stmt::CXXMemberCallExprClass:
-      expr = cast<CallExpr>(s);
-      args = expr->getArgs();
-      //doReplace(getStart(s), s->getLocEnd(), s,
-      //          false, true, r, expr->getArgs(), nullptr);
-      break;
-      break;
-    default:
-      internalError(getStart(expr), *CI,
-                 "memoize pragma activated on statement that is not a call expression");
-    }
-  }
-
-  cfg.astVisitor->getActiveNamespace()->addMemoization(token_, model_);
-  doReplace(getStart(s), getEnd(s), s,
-              false, true, r, args, nullptr);
-}
-
-void
-SSTMemoizeComputePragma::activate(Decl *d, Rewriter &r, PragmaConfig &cfg)
-{
-  FunctionDecl* fd = nullptr;
-  switch(d->getKind()){
-  case Decl::Function:
-  case Decl::CXXMethod:
-    fd = cast<FunctionDecl>(d);
-    break;
-  default:
-    errorAbort(d, *CI, "memoize pragma applied to declaration that is not a function");
-  }
-
-  if (!givenName_){
-    token_ = fd->getNameAsString();
-  }
-
-  cfg.astVisitor->getActiveNamespace()->addMemoization(token_, model_);
-
-  auto iter = cfg.functionPragmas.find(fd->getCanonicalDecl());
-  if (iter == cfg.functionPragmas.end()){
-    cfg.functionPragmas[fd->getCanonicalDecl()].insert(this);
-    //first time hitting the function decl -  configure it
-    //don't do modifications yet
-    //just in case this gets called twice for a weird reason
-    fxnArgInputs_.clear();
-    for (auto& str : inputs_){
-      bool found = false;
-      for (int i=0; i < fd->getNumParams(); ++i){
-        ParmVarDecl* pvd = fd->getParamDecl(i);
-        if (pvd->getNameAsString() == str){
-          found = true;
-          fxnArgInputs_.push_back(i);
-          break;
-        }
-      }
-      if (!found){
-        std::string error = "memoization input " + str
-            + " to function declaration could not be matched to any parameter";
-        errorAbort(d, *CI, error);
-      }
-    }
-  }
-
-  if (fd->isThisDeclarationADefinition() && fd->getBody()){
-    if (fd->getBody()->getStmtClass() != Stmt::CompoundStmtClass){
-      internalError(fd, *CI, "function decl body is not a compound statement");
-    }
-
-    if (written_.find(fd) == written_.end()){
-      CompoundStmt* cs = cast<CompoundStmt>(fd->getBody());
-      std::vector<const ParmVarDecl*> params(fd->getNumParams());
-      for (int i=0; i < fd->getNumParams(); ++i){
-        params[i] = fd->getParamDecl(i);
-      }
-      bool replaceBody = skeletonize_ && visitor->mode() != pragmas::MEMOIZE_MODE;
-      if (cs->body_front()){
-        doReplace(replaceBody ? getStart(cs) : getStart(cs->body_front()),
-                  getEnd(cs), cs,
-                  false, false, r, nullptr, params.data());
-      }
-      written_.insert(fd);
-    }
-
-  }
-}
-
-void
-SSTImplicitStatePragma::doReplace(SourceLocation startInsert, SourceLocation finalInsert,
-                                  bool insertStartAfter, bool insertFinalAfter,
-                                  Rewriter& r, const std::map<std::string,std::string>& values)
-{
-  std::string state_type = visitor->mode() == pragmas::MEMOIZE_MODE ? "memoize" : "compute";
-
-  bool first = true;
-  std::stringstream start_sstr;
-  start_sstr << "sstmac_set_implicit_" << state_type << "_state" << values_.size() << "(";
-  for (auto& pair : values){
-    if (!first) start_sstr << ",";
-    start_sstr << pair.first << "," << pair.second;
-    first = false;
-  }
-  start_sstr << "); ";
-  r.InsertText(startInsert, start_sstr.str(), insertStartAfter);
-
-  first = true;
-  std::stringstream finish_sstr;
-  finish_sstr << "; sstmac_unset_implicit_" << state_type << "_state" << values_.size() << "(";
-  for (auto& pair : values){
-    if (!first) finish_sstr << ",";
-    first = false;
-    finish_sstr << pair.first;
-  }
-  finish_sstr << ");";
-
-  if (insertFinalAfter) finalInsert = finalInsert.getLocWithOffset(1);
-  r.InsertText(finalInsert, finish_sstr.str(), insertFinalAfter);
-}
-
-void
-SSTImplicitStatePragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
-{
-  doReplace(getStart(s), getEnd(s),
-            false, true, r, values_);
-}
-
-void
-SSTImplicitStatePragma::activate(Decl *d, Rewriter &r, PragmaConfig &cfg)
-{
-  FunctionDecl* fd = nullptr;
-  switch(d->getKind()){
-  case Decl::Function:
-  case Decl::CXXMethod:
-    fd = cast<FunctionDecl>(d);
-    break;
-  default:
-    errorAbort(d, *CI, "implicit state pragma applied to declaration that is not a function");
-  }
-
-  auto& set = cfg.functionPragmas[fd->getCanonicalDecl()];
-  if (set.find(this) == set.end()){
-    set.insert(this);
-    //first time hitting the function decl -  configure it
-    //don't do modifications yet
-    //just in case this gets called twice for a weird reason
-    fxnArgValues_.clear();
-    for (auto& pair : values_){
-      bool found = false;
-      for (int i=0; i < fd->getNumParams(); ++i){
-        ParmVarDecl* pvd = fd->getParamDecl(i);
-        if (pvd->getNameAsString() == pair.second){
-          found = true;
-          fxnArgValues_[pair.first] = i;
-          break;
-        }
-      }
-      if (!found){
-        std::string error = "memoization input " + pair.first
-            + " to function declaration could not be matched to any parameter";
-        errorAbort(d, *CI, error);
-      }
-    }
-  }
-
-  if (fd->isThisDeclarationADefinition() && fd->getBody()){
-    if (fd->getBody()->getStmtClass() != Stmt::CompoundStmtClass){
-      internalError(fd, *CI, "function decl body is not a compound statement");
-    }
-    if (written_.find(fd) == written_.end()){
-      CompoundStmt* cs = cast<CompoundStmt>(fd->getBody());
-      std::vector<const ParmVarDecl*> params(fd->getNumParams());
-      std::map<std::string,std::string> values;
-      for (auto& pair : fxnArgValues_){
-        values[pair.first] = fd->getParamDecl(pair.second)->getNameAsString();
-      }
-      if (cs->body_front()){
-        doReplace(getStart(cs->body_front()),
-                  getEnd(cs), false, false, r, values);
-      }
-      written_.insert(fd);
-    }
-  }
-}
-
-void
-SSTMemoryPragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
-{
-  cfg.computeMemorySpec = memSpec_;
+  CompilerGlobals::astNodeMetadata.computeMemoryOverrides[s] = memSpec_;
 }
 
 
@@ -414,7 +300,7 @@ enum OpenMPProperty {
 };
 
 std::string
-SSTOpenMPParallelPragma::numThreads(SourceLocation loc, CompilerInstance &CI, const std::list<Token> &tokens)
+SSTOpenMPParallelPragma::numThreads(SourceLocation loc, const std::list<Token> &tokens)
 {
   static const std::map<std::string, OpenMPProperty> omp_property_map = {
     {"num_threads", OMP_NTHREAD},
@@ -466,87 +352,14 @@ SSTOpenMPParallelPragma::numThreads(SourceLocation loc, CompilerInstance &CI, co
   return nthread;
 }
 
-SSTOpenMPParallelPragma::SSTOpenMPParallelPragma(SourceLocation loc, CompilerInstance& ci,
-                                                 const std::list<Token> &tokens)
-  : SSTComputePragma(numThreads(loc,ci,tokens))
+SSTOpenMPParallelPragma::SSTOpenMPParallelPragma(SourceLocation loc, const std::list<Token> &tokens)
+  : SSTComputePragma(numThreads(loc,tokens))
 { 
 }
 
-SSTMemoizeComputePragma::SSTMemoizeComputePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-                                                 std::map<std::string, std::list<std::string>>&& in_args)
-{
-  auto args = in_args;
-  auto iter = args.find("skeletonize");
-  if (iter != args.end()){
-    std::string val = iter->second.front();
-    if (val == "true"){
-      skeletonize_ = true;
-    } else if (val == "false"){
-      skeletonize_ = false;
-    } else {
-      errorAbort(loc, CI, "skeletonize argument must be true/false");
-    }
-    args.erase(iter);
-  }
+using namespace modes;
 
-  iter = args.find("inputs");
-  std::list<std::string> inputs;
-  if (iter != args.end()){
-    inputs_ = std::move(iter->second);
-    args.erase(iter);
-  }
-
-  std::string model = "null";
-  iter = args.find("model");
-  if (iter != args.end()){
-    model_ = iter->second.front();
-    args.erase(iter);
-  }
-
-  std::string name;
-  iter = args.find("name");
-  if (iter != args.end()){
-    token_ = iter->second.front();
-    args.erase(iter);
-    givenName_ = true;
-  } else {
-    PresumedLoc ploc = CI.getSourceManager().getPresumedLoc(loc);
-    std::stringstream token_sstr;
-    token_sstr << ploc.getFilename() << ":" << ploc.getLine();
-    token_ = token_sstr.str();
-  }
-
-  if (!args.empty()){
-    //we got passed an invalid argument
-    std::stringstream sstr;
-    sstr << "got invalid args for memoize pragma: ";
-    for (auto& pair : args){
-      sstr << pair.first << ",";
-    }
-    errorAbort(loc, CI, sstr.str());
-  }
-}
-
-
-SSTImplicitStatePragma::SSTImplicitStatePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-    std::map<std::string, std::list<std::string>>&& in_args)
-{
-  for (auto& pair : in_args){
-    if (pair.second.size() > 1){
-      std::string error = "cannot specify multiple values for implicit state " + pair.first;
-      errorAbort(loc, CI, error);
-    }
-    if (pair.second.empty()){
-      values_[pair.first] = "0";
-    } else {
-      values_[pair.first] = pair.second.front();
-    }
-  }
-}
-
-using namespace pragmas;
-
-static PragmaRegister<SSTStringPragmaShim, SSTLoopCountPragma, true> loopCountPragma(
+static PragmaRegister<SSTTokenListPragmaShim, SSTLoopCountPragma, true> loopCountPragma(
     "sst", "loop_count", SKELETONIZE | PUPPETIZE | SHADOWIZE);
 static PragmaRegister<SSTStringPragmaShim, SSTMemoryPragma, true> memoryPragma(
     "sst", "memory", SKELETONIZE | SHADOWIZE);
@@ -556,8 +369,6 @@ static PragmaRegister<SSTNoArgsPragmaShim, SSTComputePragma, true> alwaysCompute
     "sst", "always_compute", SKELETONIZE | SHADOWIZE | ENCAPSULATE);
 // static PragmaRegister<SSTArgMapPragmaShim, SSTMemoizeComputePragma, true> memoizePragma(
 //     "sst", "memoize", MEMOIZE | SKELETONIZE);
-static PragmaRegister<SSTArgMapPragmaShim, SSTImplicitStatePragma, true> implictPragma(
-    "sst", "implicit_state", MEMOIZE | SKELETONIZE);
 static PragmaRegister<SSTTokenListPragmaShim, SSTOpenMPParallelPragma, true> ompPragmaSkel(
     "omp", "parallel", SKELETONIZE);
 static PragmaRegister<SSTTokenListPragmaShim, SSTOpenMPParallelPragma, false> ompPragmaPup(

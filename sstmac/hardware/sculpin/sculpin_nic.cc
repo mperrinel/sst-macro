@@ -63,8 +63,8 @@ Questions? Contact sst-macro-help@sandia.gov
 namespace sstmac {
 namespace hw {
 
-SculpinNIC::SculpinNIC(SST::Component* parent, SST::Params& params) :
-  NIC(parent, params)
+SculpinNIC::SculpinNIC(uint32_t id, SST::Params& params, Node* parent) :
+  NIC(id, params, parent)
 {
   SST::Params inj_params = params.find_scoped_params("injection");
 
@@ -73,7 +73,7 @@ SculpinNIC::SculpinNIC(SST::Component* parent, SST::Params& params) :
 }
 
 void
-SculpinNIC::init(unsigned int phase)
+SculpinNIC::init(unsigned int /*phase*/)
 {
 }
 
@@ -98,13 +98,13 @@ SculpinNIC::payloadHandler(int port)
 }
 
 LinkHandler*
-SculpinNIC::creditHandler(int port)
+SculpinNIC::creditHandler(int  /*port*/)
 {
   return newLinkHandler(this, &SculpinNIC::handleCredit);
 }
 
 void
-SculpinNIC::connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link)
+SculpinNIC::connectOutput(int src_outport, int  /*dst_inport*/, EventLink::ptr&& link)
 {
   if (src_outport == Injection){
     inj_link_ = std::move(link);
@@ -116,7 +116,8 @@ SculpinNIC::connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link
 }
 
 void
-SculpinNIC::connectInput(int src_outport, int dst_inport, EventLink::ptr&& link)
+SculpinNIC::connectInput(int /*src_outport*/, int /*dst_inport*/, 
+                         EventLink::ptr&& /*link*/)
 {
   //nothing to do
 }
@@ -202,7 +203,7 @@ SculpinNIC::handlePayload(Event *ev)
 }
 
 void
-SculpinNIC::handleCredit(Event *ev)
+SculpinNIC::handleCredit(Event * /*ev*/)
 {
   spkt_abort_printf("SculpinNIC::handleCredit: should not handle credits in sculpin model");
 }

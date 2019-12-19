@@ -211,8 +211,9 @@ Transport::activeDelay(sstmac::Timestamp start)
 }
 
 void
-Transport::logMessageDelay(Message *msg, uint64_t bytes, int stage,
-                           sstmac::TimeDelta sync_delay, sstmac::TimeDelta active_delay)
+Transport::logMessageDelay(Message * /*msg*/, uint64_t /*bytes*/, int /*stage*/,
+                           sstmac::TimeDelta /*sync_delay*/, 
+                           sstmac::TimeDelta /*active_delay*/)
 {
 }
 
@@ -224,14 +225,14 @@ Transport::startCollectiveMessageLog()
 
 SimTransport::SimTransport(SST::Params& params, sstmac::sw::App* parent, SST::Component* comp) :
   //the name of the transport itself should be mapped to a unique name
-  API(params, parent, comp),
   Transport("sumi", parent->sid(), parent->os()->addr()),
+  API(params, parent, comp),
   //the server is what takes on the specified libname
-  spy_bytes_(nullptr),
   completion_queues_(1),
+  spy_bytes_(nullptr),
+  parent_app_(parent),
   default_progress_queue_(parent->os()),
   nic_ioctl_(parent->os()->nicDataIoctl()),
-  parent_app_(parent),
   qos_analysis_(nullptr)
 {
   completion_queues_[0] = std::bind(&DefaultProgressQueue::incoming,
@@ -343,7 +344,7 @@ SimTransport::memcopy(uint64_t bytes)
 }
 
 void
-SimTransport::incomingEvent(sstmac::Event *ev)
+SimTransport::incomingEvent(sstmac::Event * /*ev*/)
 {
   spkt_abort_printf("sumi_transport::incoming_event: should not directly handle events");
 }
@@ -507,11 +508,11 @@ SimTransport::now() const
 }
 
 CollectiveEngine::CollectiveEngine(SST::Params& params, Transport *tport) :
-  system_collective_tag_(-1), //negative tags reserved for special system work
+  tport_(tport),
+  global_domain_(nullptr),
   eager_cutoff_(512),
   use_put_protocol_(false),
-  global_domain_(nullptr),
-  tport_(tport)
+  system_collective_tag_(-1) //negative tags reserved for special system work
 {
   global_domain_ = new GlobalCommunicator(tport);
   eager_cutoff_ = params.find<int>("eager_cutoff", 512);
@@ -543,7 +544,7 @@ CollectiveEngine::notifyCollectiveDone(int rank, Collective::type_t ty, int tag)
 }
 
 void
-CollectiveEngine::initSmp(const std::set<int>& neighbors)
+CollectiveEngine::initSmp(const std::set<int>& /*neighbors*/)
 {
 }
 
@@ -962,7 +963,7 @@ CollectiveEngine::waitBarrier(int tag)
 {
   if (tport_->nproc() == 1) return;
   barrier(tag, Message::default_cq);
-  auto* dmsg = blockUntilNext(Message::default_cq);
+  blockUntilNext(Message::default_cq);
 }
 
 void
@@ -1046,7 +1047,7 @@ class NullQoSAnalysis : public QoSAnalysis
     return m->qos();
   }
 
-  void logDelay(sstmac::TimeDelta delay, Message *m) override {
+  void logDelay(sstmac::TimeDelta /*delay*/, Message * /*m*/) override {
 
   }
 
@@ -1073,7 +1074,7 @@ class PatternQoSAnalysis : public QoSAnalysis
     rdmaCutoff_ = params.find<SST::UnitAlgebra>("rdma_cutoff").getRoundedValue();
   }
 
-  int selectQoS(Message *m) override {
+  int selectQoS(Message * /*m*/) override {
     return 0;
   }
 
@@ -1086,7 +1087,7 @@ class PatternQoSAnalysis : public QoSAnalysis
     }
 
     printf("Message %12lu: %2u->%2u %8llu %10.4e %10.4e\n",
-       m->hash(), m->sender(), m->recver(), m->byteLength(),
+       m->hash(), m->sender(), m->recver(), static_cast<unsigned long long>(m->byteLength()),
        delay.sec(), acceptable_delay.sec());
 
   }

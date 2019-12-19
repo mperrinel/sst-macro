@@ -48,14 +48,12 @@ Questions? Contact sst-macro-help@sandia.gov
 
 class SSTReplacePragma : public SSTPragma {
  protected:
-  std::string fxn_;
+  std::string match_;
   std::string replacement_;
  public:
-  SSTReplacePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-                   const std::list<clang::Token>& tokens);
+  SSTReplacePragma(clang::SourceLocation loc, const std::list<clang::Token>& tokens);
 
   static std::string parse(clang::SourceLocation loc,
-      clang::CompilerInstance& CI,
       const std::list<clang::Token>& tokens, std::ostream& os);
 
   const std::string& replacement() const {
@@ -63,48 +61,23 @@ class SSTReplacePragma : public SSTPragma {
   }
 
   const std::string& fxn() const {
-    return fxn_;
+    return match_;
   }
 
+  void activate(clang::Stmt *s) override;
+  void activate(clang::Decl *d) override;
+ private:
   void run(clang::Stmt* s, std::list<const clang::Expr*>& replaced);
-  void run(clang::Stmt* s, clang::Rewriter& r);
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override;
-  void activate(clang::Decl *d, clang::Rewriter &r, PragmaConfig &cfg) override;
- private:
-  void run(clang::Stmt* s, clang::Rewriter& rw, std::list<const clang::Expr*>& replaced);
-  void activateFunctionDecl(clang::FunctionDecl* d, clang::Rewriter& r);
-  void activateVarDecl(clang::VarDecl* d, clang::Rewriter& r);
-  void activateCXXRecordDecl(clang::CXXRecordDecl* d, clang::Rewriter& r);
-};
-
-class SSTStartReplacePragma : public SSTReplacePragma {
- public:
-  SSTStartReplacePragma(clang::SourceLocation loc, clang::CompilerInstance& CI,
-                        const std::list<clang::Token>& tokens) :
-    SSTReplacePragma(loc,CI,tokens){}
-
-  void activate(clang::Stmt* s, clang::Rewriter& r, PragmaConfig& cfg) override {
-    cfg.replacePragmas[fxn_] = this;
-  }
-};
-
-class SSTStopReplacePragma : public SSTPragma {
- public:
-  SSTStopReplacePragma(const std::string& fxn) :
-    fxn_(fxn){}
-
-  void activate(clang::Stmt* s, clang::Rewriter& r, PragmaConfig& cfg) override {
-    cfg.replacePragmas.erase(fxn_);
-  }
- private:
-  std::string fxn_;
+  void activateFunctionDecl(clang::FunctionDecl* d);
+  void activateVarDecl(clang::VarDecl* d);
+  void activateCXXRecordDecl(clang::CXXRecordDecl* d);
 };
 
 class SSTInsteadPragma : public SSTPragma {
  public:
   SSTInsteadPragma(const std::string& repl) : repl_(repl) {}
 
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override;
+  void activate(clang::Stmt *s) override;
 
  private:
   std::string repl_;
@@ -118,11 +91,11 @@ class SSTInitPragma : public SSTPragma {
     return init_;
   }
 
-  void activate(clang::Stmt *s, clang::Rewriter &r, PragmaConfig &cfg) override;
+  void activate(clang::Stmt *s) override;
 
  private:
-  void activateDeclStmt(clang::DeclStmt* s, clang::Rewriter& r);
-  void activateBinaryOperator(clang::BinaryOperator* op, clang::Rewriter& r);
+  void activateDeclStmt(clang::DeclStmt* s);
+  void activateBinaryOperator(clang::BinaryOperator* op);
   std::string init_;
 };
 

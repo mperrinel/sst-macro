@@ -137,26 +137,6 @@ spin_up_pthread_work(void* args){
   return 0;
 }
 
-static void
-print_backtrace(int sig)
-{
-  void* array[40];
-  char cmd[1024];
-  char debug[1024];
-  int size = backtrace(array, 40);
-  std::stringstream sstr;
-  for (int i=0; i < size; ++i){
-    void* addr = array[i];
-    Dl_info info;
-    int err = dladdr(addr, &info);
-    sstr << sprockit::printf("backtrace[%2d] = %p : %s %p\n",
-                  i, addr, info.dli_fname, info.dli_fbase);
-  }
-  std::cout << sstr.str() << std::endl;
-  sleep(1);
-  exit(1);
-}
-
 MultithreadedEventContainer::MultithreadedEventContainer(
   SST::Params& params, ParallelRuntime* rt) :
   ClockCycleEventMap(params, rt)
@@ -347,9 +327,12 @@ MultithreadedEventContainer::run()
   //launch all the subthreads - don't launch zero
   //main thread will do zero's work
   int status;
-  int thread_affinity;
   debug_printf(sprockit::dbg::parallel, "spawning %d subthreads",
                num_subthreads_);
+
+#if SSTMAC_USE_CPU_AFFINITY
+  int thread_affinity;
+#endif
   for (int i=0; i < num_subthreads_; ++i){
 #if SSTMAC_USE_CPU_AFFINITY
     //pin the pthread to core base+i

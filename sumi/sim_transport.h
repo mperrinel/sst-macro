@@ -80,7 +80,7 @@ class QoSAnalysis {
   SST_ELI_DECLARE_DEFAULT_INFO()
   SST_ELI_DECLARE_CTOR(SST::Params&)
 
-  QoSAnalysis(SST::Params& params){}
+  QoSAnalysis(SST::Params& /*params*/){}
 
   virtual ~QoSAnalysis(){}
 
@@ -172,7 +172,7 @@ class SimTransport : public Transport, public sstmac::sw::API {
     return buffer;
   }
 
-  void freePublicBuffer(void* buf, uint64_t size) override {
+  void freePublicBuffer(void* buf, uint64_t  /*size*/) override {
     ::free(buf);
   }
 
@@ -294,7 +294,7 @@ class SimTransport : public Transport, public sstmac::sw::API {
   QoSAnalysis* qos_analysis_;
 
  private:
-  void drop(Message* m){}
+  void drop(Message*){}
 };
 
 

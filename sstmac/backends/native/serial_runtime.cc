@@ -81,67 +81,67 @@ SerialRuntime::allgather(void *send_buffer, int num_bytes, void *recv_buffer)
 }
 
 void
-SerialRuntime::send(int dst, void *buffer, int buffer_size)
+SerialRuntime::send(int  /*dst*/, void * /*buffer*/, int  /*buffer_size*/)
 {
   sprockit::abort("serial_runtime::send: should never be called - who would I send to?");
 }
 
 void
-SerialRuntime::recv(int src, void *buffer, int buffer_size)
+SerialRuntime::recv(int  /*src*/, void * /*buffer*/, int  /*buffer_size*/)
 {
   sprockit::abort("serial_runtime::recv: should never be called - who would I recv from?");
 }
 
 void
-SerialRuntime::globalSum(uint32_t *data, int nelems, int root)
+SerialRuntime::globalSum(uint32_t * /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalSum(uint64_t *data, int nelems, int root)
+SerialRuntime::globalSum(uint64_t * /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalSum(int32_t *data, int nelems, int root)
+SerialRuntime::globalSum(int32_t * /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalSum(int64_t *data, int nelems, int root)
+SerialRuntime::globalSum(int64_t * /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalMax(int32_t* data, int nelems, int root)
+SerialRuntime::globalMax(int32_t* /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalMax(uint32_t *data, int nelems, int root)
+SerialRuntime::globalMax(uint32_t * /*data*/, int /*nelems*/, int /*root*/)
 {
   //do nothing
 }
 
 void
-SerialRuntime::globalMax(int64_t *data, int nelems, int root)
+SerialRuntime::globalMax(int64_t * /*data*/, int /*nelems*/, int /*root*/)
 {
  //do nothing
 }
 
 void
-SerialRuntime::globalMax(uint64_t *data, int nelems, int root)
+SerialRuntime::globalMax(uint64_t * /*data*/, int /*nelems*/, int /*root*/)
 {
  //do nothing
 }
 
 void
-SerialRuntime::bcast(void* buffer, int bytes, int root)
+SerialRuntime::bcast(void* /*buffer*/, int /*bytes*/, int /*root*/)
 {
  //do nothning
 }

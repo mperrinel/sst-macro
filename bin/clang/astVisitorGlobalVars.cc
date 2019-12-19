@@ -1,4 +1,5 @@
 #include "astVisitor.h"
+#include <unusedvariablemacro.h>
 
 using namespace clang;
 
@@ -21,19 +22,19 @@ getPointerBaseType(VarDecl* D){
 }
 
 static std::string
-getFxnTypedef(clang::SourceLocation loc, const Type* ty, const std::string& name, clang::CompilerInstance* ci){
+getFxnTypedef(clang::SourceLocation loc, const Type* ty, const std::string& name){
   std::string typeName = GetAsString(ty);
   //this is horrible... but the only way I know
-  auto pos = typeName.find(")");
+  auto pos = typeName.find(')');
   if (pos == std::string::npos){
-    internalError(loc, *ci, "failed typedef on " + typeName);
+    internalError(loc, "failed typedef on " + typeName);
   }
   std::string tdefName = "typedef " + typeName.substr(0, pos) + name +typeName.substr(pos);
   return tdefName;
 }
 
 static void
-scopeString(SourceLocation loc, CompilerInstance& ci, DeclContext* ctx,
+scopeString(SourceLocation loc, DeclContext* ctx,
             std::list<std::string>& scopes){
   while (ctx->getDeclKind() != Decl::TranslationUnit){
     switch (ctx->getDeclKind()){
@@ -50,7 +51,7 @@ scopeString(SourceLocation loc, CompilerInstance& ci, DeclContext* ctx,
       }
       break;
     default:
-      errorAbort(loc, ci, "bad context type in scope string");
+      errorAbort(loc, "bad context type in scope string");
       break;
     }
   }
@@ -62,8 +63,7 @@ SkeletonASTVisitor::setupGlobalReplacement(VarDecl *D, const std::string& namePr
 {
   bool threadLocal = isThreadLocal(D);
   if (threadLocal){
-    errorAbort(D, *ci_,
-               "thread local variables not yet allowed");
+    errorAbort(D, "thread local variables not yet allowed");
   }
 
   std::string uniqueName = namePrefix + D->getNameAsString();
@@ -84,7 +84,7 @@ SkeletonASTVisitor::setupGlobalReplacement(VarDecl *D, const std::string& namePr
   } else if (var.anonRecord){
     var.retType = var.anonRecord->retType;
     SourceLocation openBrace = var.anonRecord->decl->getBraceRange().getBegin();
-    rewriter_.InsertText(openBrace, "  " + var.anonRecord->typeName, false, false);
+    CompilerGlobals::rewriter.InsertText(openBrace, "  " + var.anonRecord->typeName, false, false);
     var.typeStr = var.anonRecord->structType + " " + var.anonRecord->typeName;
   } else if (D->getType()->isBooleanType()) {
     var.retType = "bool*";
@@ -106,7 +106,7 @@ SkeletonASTVisitor::setupGlobalReplacement(VarDecl *D, const std::string& namePr
       var.retType = var.typeStr + "*";
     } else {
       std::string typedefName = D->getNameAsString() + "_sstmac_fxn_typedef";
-      std::string typedefDecl = getFxnTypedef(getStart(D), D->getType().getTypePtr(), typedefName, ci_);
+      std::string typedefDecl = getFxnTypedef(getStart(D), D->getType().getTypePtr(), typedefName);
       delayedInsertAfter(D, typedefDecl + ";");
       var.typeStr = typedefName;
       var.retType = typedefName + "*";
@@ -119,7 +119,7 @@ SkeletonASTVisitor::setupGlobalReplacement(VarDecl *D, const std::string& namePr
       var.retType = var.typeStr + "*";
     } else {
       std::string typedefName = D->getNameAsString() + "_sstmac_fxn_typedef";
-      std::string typedefDecl = getFxnTypedef(getStart(D), ptrSubTy, typedefName, ci_);
+      std::string typedefDecl = getFxnTypedef(getStart(D), ptrSubTy, typedefName);
       int ptrDepth = std::count(typeStr.begin(), typeStr.end(), '*') - 1;
       var.typeStr = typedefName;
       for (int i=0; i < ptrDepth; i++){
@@ -151,8 +151,7 @@ SkeletonASTVisitor::registerGlobalReplacement(VarDecl* D, GlobalVariableReplacem
   SourceLocation declEnd = getEndLoc(getEnd(D));
   if (declEnd.isInvalid()){
     D->dump();
-    errorAbort(D, *ci_,
-               "unable to locate end of variable declaration");
+    errorAbort(D, "unable to locate end of variable declaration");
   }
 
   const Decl* md = mainDecl(D);
@@ -252,11 +251,10 @@ SkeletonASTVisitor::setupClassStaticVarDecl(VarDecl* D)
         << "}";
     //everywhere the variable A->x or A.x is used will be replaced with the function above to be
     //A->x_getter() or A.x_getter()
-    rewriter_.InsertText(declEnd, os.str());
+    CompilerGlobals::rewriter.InsertText(declEnd, os.str());
 
     registerGlobalReplacement(D, &repl);
   } else {
-    CXXRecordDecl* outerCls = classContexts_.front();
     std::stringstream varname_scope_sstr; varname_scope_sstr << "_";
     std::stringstream cls_scope_sstr;
     for (CXXRecordDecl* decl : classContexts_){
@@ -364,10 +362,10 @@ bool
 SkeletonASTVisitor::setupFunctionStaticCpp(VarDecl* D, const std::string& scopePrefix)
 {
   if (insideTemplateFxn()){
-    internalError(D, *ci_, "static function variables in template functions not yet supported");
+    internalError(D, "static function variables in template functions not yet supported");
   }
 
-  FunctionDecl* outerFxn = fxnContexts_.front();
+  FunctionDecl* outerFxn = CompilerGlobals::astContextLists.enclosingFunctionDecls.front();
   SourceLocation fxnStart = getStart(outerFxn);
 
   GlobalVariableReplacement var = setupGlobalReplacement(D, scopePrefix, false, true, false);
@@ -377,7 +375,7 @@ SkeletonASTVisitor::setupFunctionStaticCpp(VarDecl* D, const std::string& scopeP
       "   void** ptrptr = (void**) ptr; "
       "   *ptrptr = nullptr; "
       "}";
-  rewriter_.InsertText(fxnStart, replText, false);
+  CompilerGlobals::rewriter.InsertText(fxnStart, replText, false);
 
   std::string initializer;
   if (D->hasInit()){
@@ -412,7 +410,7 @@ SkeletonASTVisitor::setupFunctionStaticCpp(VarDecl* D, const std::string& scopeP
 bool
 SkeletonASTVisitor::setupFunctionStaticC(VarDecl* D, const std::string& scopePrefix)
 {
-  FunctionDecl* outerFxn = fxnContexts_.front();
+  FunctionDecl* outerFxn = CompilerGlobals::astContextLists.enclosingFunctionDecls.front();
   SourceLocation fxnStart = getStart(outerFxn);
 
   GlobalVariableReplacement var = setupGlobalReplacement(D, scopePrefix, false, true, false);
@@ -422,7 +420,7 @@ SkeletonASTVisitor::setupFunctionStaticC(VarDecl* D, const std::string& scopePre
       "   void** ptrptr = (void**) ptr; "
       "   *ptrptr = 0; "
       "}";
-  rewriter_.InsertText(fxnStart, replText, false);
+  CompilerGlobals::rewriter.InsertText(fxnStart, replText, false);
 
   std::string initText =
    "void** ptrsstmac_" + var.scopeUniqueVarName
@@ -456,7 +454,7 @@ bool
 SkeletonASTVisitor::checkDeclStaticClassVar(VarDecl *D)
 {
   if (classContexts_.size() > 1){
-    errorAbort(D, *ci_, "cannot handle static variables in inner classes");
+    errorAbort(D, "cannot handle static variables in inner classes");
   }
 
   if (!D->hasInit()){
@@ -470,7 +468,7 @@ SkeletonASTVisitor::checkDeclStaticClassVar(VarDecl *D)
 bool
 SkeletonASTVisitor::checkStaticFileVar(VarDecl* D)
 {
-  std::string prefix = currentNs_->filePrefix(ci_, getStart(D));
+  std::string prefix = currentNs_->filePrefix(getStart(D));
   if (isCxx()){
     return setupCppGlobalVar(D, prefix);
   } else {
@@ -491,7 +489,7 @@ SkeletonASTVisitor::checkGlobalVar(VarDecl* D)
 bool
 SkeletonASTVisitor::checkStaticFxnVar(VarDecl *D)
 {
-  FunctionDecl* outerFxn = fxnContexts_.front();
+  FunctionDecl* outerFxn = CompilerGlobals::astContextLists.enclosingFunctionDecls.front();
   std::stringstream prefix_sstr;
   prefix_sstr << "_" << outerFxn->getNameAsString();
 
@@ -504,7 +502,7 @@ SkeletonASTVisitor::checkStaticFxnVar(VarDecl *D)
   }
   ++cnt;
 
-  std::string scope_prefix = currentNs_->filePrefix(ci_, getStart(D)) + prefix_sstr.str();
+  std::string scope_prefix = currentNs_->filePrefix(getStart(D)) + prefix_sstr.str();
 
   if (isCxx()){
     return setupFunctionStaticCpp(D, scope_prefix);
@@ -531,13 +529,13 @@ SkeletonASTVisitor::checkInstanceStaticClassVar(VarDecl *D)
   DeclContext* semanticContext = D->getDeclContext();
   if (!isa<CXXRecordDecl>(semanticContext)){
     std::string error = "variable " + D->getNameAsString() + " does not have class semantic context";
-    errorAbort(D, *ci_, error);
+    errorAbort(D, error);
   }
   CXXRecordDecl* parentCls = cast<CXXRecordDecl>(semanticContext);
   std::list<std::string> lex;
-  scopeString(getStart(D), *ci_, lexicalContext, lex);
+  scopeString(getStart(D), lexicalContext, lex);
   std::list<std::string> sem;
-  scopeString(getStart(D), *ci_, semanticContext, sem);
+  scopeString(getStart(D), semanticContext, sem);
 
   //match the format from checkDeclStaticClassVar
 
@@ -545,9 +543,8 @@ SkeletonASTVisitor::checkInstanceStaticClassVar(VarDecl *D)
   //throw away the class name in the list of scopes
   sem.pop_back();
   auto semBegin = sem.begin();
-  for (auto& ignore : lex){ //figure out the overlap between lexical and semantic namespaces
-    ++semBegin;
-  }
+
+  std::advance(semBegin, lex.size());
   for (auto iter = semBegin; iter != sem.end(); ++iter){ //I must init/declare vars in the most enclosing namespace
     os << "namespace " << *iter << " {";
   }
@@ -560,8 +557,7 @@ SkeletonASTVisitor::checkInstanceStaticClassVar(VarDecl *D)
     tmplSstr << clsName << "<";
     int numLists = D->getNumTemplateParameterLists();
     if (numLists > 1){
-      internalError(getStart(D), *ci_,
-          "cannot handle nested template declarations");
+      internalError(getStart(D), "cannot handle nested template declarations");
     }
     TemplateParameterList* theList = D->getTemplateParameterList(0);
     getTemplatePrefixString(os, theList);

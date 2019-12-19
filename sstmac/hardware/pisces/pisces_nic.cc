@@ -62,8 +62,8 @@ RegisterNamespaces("congestion_delays", "congestion_matrix");
 namespace sstmac {
 namespace hw {
 
-PiscesNIC::PiscesNIC(SST::Component* parent, SST::Params& params) :
-  NIC(parent, params),
+PiscesNIC::PiscesNIC(uint32_t id, SST::Params& params, Node* parent) :
+  NIC(id, params, parent),
   pending_inject_(1)
 {
   SST::Params inj_params = params.find_scoped_params("injection");
@@ -82,7 +82,7 @@ PiscesNIC::PiscesNIC(SST::Component* parent, SST::Params& params) :
 }
 
 void
-PiscesNIC::init(unsigned int phase)
+PiscesNIC::init(unsigned int /*phase*/)
 {
 }
 
@@ -108,7 +108,7 @@ PiscesNIC::payloadHandler(int port)
 }
 
 LinkHandler*
-PiscesNIC::creditHandler(int port)
+PiscesNIC::creditHandler(int  /*port*/)
 {
   return newLinkHandler(this, &PiscesNIC::packetSent);
 }
@@ -126,7 +126,7 @@ PiscesNIC::connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link)
 }
 
 void
-PiscesNIC::connectInput(int src_outport, int dst_inport, EventLink::ptr&& link)
+PiscesNIC::connectInput(int  /*src_outport*/, int dst_inport, EventLink::ptr&& link)
 {
   if (dst_inport == Injection){ //the logp port is not for credits!
     credit_link_ = std::move(link);

@@ -106,10 +106,12 @@ class NicEvent :
 class NIC : public ConnectableSubcomponent
 {
  public:
-#if !SSTMAC_INTEGRATED_SST_CORE
+#if SSTMAC_INTEGRATED_SST_CORE
+  SST_ELI_REGISTER_SUBCOMPONENT_API(sstmac::hw::NIC,hw::Node*)
+#else
   SST_ELI_DECLARE_BASE(NIC)
   SST_ELI_DECLARE_DEFAULT_INFO()
-  SST_ELI_DECLARE_CTOR(SST::Component*,SST::Params&)
+  SST_ELI_DECLARE_CTOR(uint32_t,SST::Params&,hw::Node*)
 #endif
 
   typedef enum {
@@ -187,7 +189,7 @@ class NIC : public ConnectableSubcomponent
   virtual std::function<void(NetworkMessage*)> dataIoctl();
 
  protected:
-  NIC(SST::Component* parent, SST::Params& params);
+  NIC(uint32_t id, SST::Params& params, hw::Node* parent);
 
   Node* parent() const {
     return parent_;
@@ -236,13 +238,13 @@ class NullNIC : public NIC
 {
  public:
 #if SSTMAC_INTEGRATED_SST_CORE
-  SST_ELI_REGISTER_SUBCOMPONENT(
+  SST_ELI_REGISTER_SUBCOMPONENT_DERIVED(
     NullNIC,
     "macro",
     "null_nic",
     SST_ELI_ELEMENT_VERSION(1,0,0),
     "implements a nic that models nothing - stand-in only",
-    "nic")
+    sstmac::hw::NIC)
 #else
   SST_ELI_REGISTER_DERIVED(
     NIC,
@@ -253,22 +255,22 @@ class NullNIC : public NIC
     "implements a nic that models nothing - stand-in only")
 #endif
 
-  NullNIC(SST::Component* parent, SST::Params& params) :
-    NIC(parent, params)
+  NullNIC(uint32_t id, SST::Params& params, hw::Node* parent) :
+    NIC(id, params, parent)
   {
   }
 
   std::string toString() const override { return "null nic"; }
 
-  void doSend(NetworkMessage* msg) override {}
+  void doSend(NetworkMessage*) override {}
 
-  void connectOutput(int src_outport, int dst_inport, EventLink::ptr&& payload_link) override {}
+  void connectOutput(int, int, EventLink::ptr&&) override {}
 
-  void connectInput(int src_outport, int dst_inport, EventLink::ptr&& credit_link) override {}
+  void connectInput(int, int, EventLink::ptr&&) override {}
 
-  LinkHandler* payloadHandler(int port) override { return nullptr; }
+  LinkHandler* payloadHandler(int) override { return nullptr; }
 
-  LinkHandler* creditHandler(int port) override { return nullptr; }
+  LinkHandler* creditHandler(int) override { return nullptr; }
 };
 
 }

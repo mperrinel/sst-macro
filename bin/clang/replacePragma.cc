@@ -42,193 +42,144 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 #include "replacePragma.h"
-#include "recurseAll.h"
 #include "astVisitor.h"
 #include <sstream>
+#include <list>
 
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
 
-struct ReplacementConfig
+class ReplacementPragmaVisitor : public RecursiveASTVisitor<ReplacementPragmaVisitor>
 {
-  ReplacementConfig(const std::string& match, const std::string& repl,
-                    std::list<const Expr*>& replaced) :
-    replacedExprs(replaced),
-    matchText(match), 
-    replacementText(repl) 
-  {}
-  std::list<const Expr*> parents;
-  std::list<const Expr*>& replacedExprs;
-  const std::string& matchText;
-  const std::string& replacementText;
-};
-
-/**
- * @brief The ReplaceStatementPreVisit struct
- *
- * The replace pragma tells us to change expressions matching a string
- * This applies to functions, variables, or array exprs.
- * Consider an #sst pragma replace A
- * For simple variables, this is easy.
- * For arrays, this is harder
- *    For A[i] or A[i][j], we need to drop everything not just the "A" part
- * For functions, also annoying
- *    For A(args), we also need to drop everthing
- * Thus, we need to determine if the "base" or "lhs" of an expr
- * is a DeclRefExpr matching the replace pragma
- * Then we need to replace the entire parent expression
- */
-template <bool PreVisit> //whether pre or post visit
-struct ReplaceStatementVisit {
-  template <class T, class... Args>
-  bool operator()(T* t, ExprRole role,
-                  CompilerInstance& CI,
-                  ReplacementConfig& cfg) {
-    return false;
-  }
-
-  void visit(const Expr* expr, const std::string& name, ExprRole role,
-             CompilerInstance& CI, ReplacementConfig& cfg){
-    if (PreVisit && name == cfg.matchText){
-      switch (role){
-        case ExprRole::ArrayBase:
-        case ExprRole::CallFxn:
-          cfg.replacedExprs.push_back(cfg.parents.back());
-          break;
-        default:
-          //any other use, means this variable is not "connected" to anything else
-          cfg.replacedExprs.push_back(expr);
-          break;
-      }
-    }
-  }
-
-  void visit(const Expr* expr, ExprRole role,
-             CompilerInstance& CI,
-             ReplacementConfig& cfg)
+  using Parent=RecursiveASTVisitor<ReplacementPragmaVisitor>;
+ public:
+  ReplacementPragmaVisitor(const std::string& match) :
+    matchText_(match)
   {
-    switch(role){
-      case ExprRole::ArrayBase:
-      case ExprRole::CallFxn:
-        //this is connected to the parent
-        //current parent remains the parent
-        break;
-      default:
-        if (PreVisit){
-          //break the connection to prev parent
-          cfg.parents.push_back(expr);
-        } else { //restore the original parent
-          cfg.parents.pop_back();
-        }
+  }
+
+  bool start(Stmt* s){
+    try {
+      return Parent::TraverseStmt(s);
+    } catch (StmtDeleteException& e) {
+      //we traversed something other than a compound stmt or declstmt
+      exceptions_.emplace_back(e.deleted);
     }
+    return true;
   }
 
-  bool operator()(const ArraySubscriptExpr* expr, ExprRole role,
-                  CompilerInstance& CI,
-                  ReplacementConfig& cfg){
-    visit(expr, role, CI, cfg);
-    return false;
+  bool TraverseCompoundStmt(CompoundStmt* stmt, DataRecursionQueue* = nullptr){
+    for (auto iter = stmt->body_begin(); iter != stmt->body_end(); ++iter){
+      try {
+        Stmt* s = *iter;
+        TraverseStmt(s);
+      } catch (StmtDeleteException& e) {
+        *iter = zeroExpr(getStart(stmt));
+      }
+    }
+    return true;
   }
 
-  bool operator()(const CXXMemberCallExpr* expr, ExprRole role,
-                  CompilerInstance& CI,
-                  ReplacementConfig& cfg){
-    visit(expr, role, CI, cfg);
-    return false;
-  }
-
-  bool operator()(const CallExpr* expr, ExprRole role,
-                  CompilerInstance& CI,
-                  ReplacementConfig& cfg){
-    visit(expr, role, CI, cfg);
-    return false;
-  }
-
-  bool operator()(const DeclRefExpr* expr, ExprRole role,
-                  CompilerInstance& CI, ReplacementConfig& cfg){
-    visit(expr, expr->getFoundDecl()->getNameAsString(), role, CI, cfg);
-    return false;
-  }
-
-  bool operator()(const MemberExpr* expr, ExprRole role,
-                  CompilerInstance& CI, ReplacementConfig& cfg){
-    visit(expr, expr->getFoundDecl()->getNameAsString(), role, CI, cfg);
-    return false;
-  }
-
-  bool operator()(const DeclStmt* stmt, ExprRole role,
-                  CompilerInstance& CI, ReplacementConfig& cfg){
-    if (PreVisit){
-      const Decl* d = stmt->getSingleDecl();
-      if (d && d->getKind() == Decl::Var){
-        const VarDecl* vd = cast<const VarDecl>(d);
-        if (vd->getNameAsString() == cfg.matchText){
-          if (vd->hasInit()) {
-            cfg.replacedExprs.push_back(vd->getInit());
-          } else {
-            errorAbort(getStart(stmt), CI,
-              "replace pragma applied to declaration with no initializer");
-          }
+  bool TraverseDeclStmt(DeclStmt* stmt, DataRecursionQueue* = nullptr){
+    if (stmt->isSingleDecl() && isa<VarDecl>(stmt->getSingleDecl())){
+      Decl* d = stmt->getSingleDecl();
+      VarDecl* vd = cast<VarDecl>(d);
+      if (vd->getNameAsString() == matchText_){
+        if (vd->hasInit()) {
+          replaced_.insert(vd->getInit());
+          vd->setInit(zeroExpr(getStart(stmt)));
+        } else {
+          errorAbort(getStart(stmt), "replace pragma applied to declaration with no initializer");
         }
+      }
+    }
+    return Parent::TraverseDeclStmt(stmt);
+  }
+
+  bool matchingDeclRef(Expr* expr){
+    auto* underlying = SkeletonASTVisitor::getUnderlyingExpr(expr);
+    if (underlying->getStmtClass() == Stmt::DeclRefExprClass){
+      DeclRefExpr* dref = cast<DeclRefExpr>(underlying);
+      NamedDecl* nd = dref->getFoundDecl();
+      if (nd->getNameAsString() == matchText_){
+        return true;
       }
     }
     return false;
   }
 
+  bool TraverseArraySubscriptExpr(ArraySubscriptExpr* expr, DataRecursionQueue* queue = nullptr){
+    if (matchingDeclRef(expr->getBase())){
+      replaced_.insert(expr);
+      throw StmtDeleteException(expr);
+      return true;
+    } else {
+      try {
+        Parent::TraverseArraySubscriptExpr(expr);
+      } catch (StmtDeleteException& e) {
+        //chained subscripts need to propagate up
+        replaced_.erase(cast<Expr>(e.deleted));
+        replaced_.insert(expr);
+        throw StmtDeleteException(expr);
+      }
+      return true;
+    }
+  }
+
+  bool TraverseCallExpr(CallExpr* expr, DataRecursionQueue* queue = nullptr){
+    if (matchingDeclRef(expr->getCallee())){
+      replaced_.insert(expr);
+      throw StmtDeleteException(expr);
+      return true;
+    } else {
+      return Parent::TraverseCallExpr(expr);
+    }
+  }
+
+  const std::set<const Expr*> replaced() const {
+    return replaced_;
+  }
+
+  void maybeThrowException(){
+    if (!exceptions_.empty()){
+      throw exceptions_[0];
+    }
+  }
+
+ private:
+  std::string matchText_;
+  std::set<const Expr*> replaced_;
+  std::vector<StmtDeleteException> exceptions_;
+
 };
 
 void
-SSTReplacePragma::run(Stmt *s, std::list<const Expr*>& replacedExprs)
+SSTReplacePragma::activate(Stmt *s)
 {
-  using PreVisit=ReplaceStatementVisit<true>;
-  using PostVisit=ReplaceStatementVisit<false>;
-  ReplacementConfig rcfg(fxn_, replacement_, replacedExprs);
-  recurseAll<PreVisit,PostVisit>(s, *CI, rcfg);
-  if (replacedExprs.size() == 0){
-    std::string error = "replace pragma '" + fxn_ + "' did not match anything";
-    errorAbort(s, *CI, error);
+  ReplacementPragmaVisitor visitor(match_);
+  visitor.start(s);
+
+  for (const Expr* e: visitor.replaced()){
+    replace(e,replacement_);
   }
-}
 
-void
-SSTReplacePragma::run(Stmt *s, Rewriter& r, std::list<const Expr *> &replaced)
-{
-  run(s,replaced);
-  for (const Expr* e: replaced){
-    replace(e,r,replacement_,*CI);
-  }
-}
-
-void
-SSTReplacePragma::run(Stmt *s, Rewriter &r)
-{
-  std::list<const Expr*> replaced;
-  run(s,r,replaced);
-}
-
-void
-SSTReplacePragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
-{
-  std::list<const Expr*> replaced;
-  run(s,r,replaced);
-  for (const Expr* e: replaced){
-    if (e->getStmtClass() == Stmt::DeclRefExprClass){
-      cfg.deletedRefs.insert(cast<const DeclRefExpr>(e));
-    }
-  }
+  //depending on the case, we may need to notify the parent AST node
+  //that a deletion or something happened that should void further
+  //visits to this node
+  visitor.maybeThrowException();
 }
 
 
 void
-SSTReplacePragma::activate(Decl *d, Rewriter &r, PragmaConfig &cfg)
+SSTReplacePragma::activate(Decl *d)
 {
-#define repl_case(kind,d,rw) \
-  case Decl::kind: activate##kind##Decl(cast<kind##Decl>(d), rw); break
+#define repl_case(kind,d) \
+  case Decl::kind: activate##kind##Decl(cast<kind##Decl>(d)); break
   switch(d->getKind()){
-    repl_case(Function,d,r);
-    repl_case(Var,d,r);
-    repl_case(CXXRecord,d,r);
+    repl_case(Function,d);
+    repl_case(Var,d);
+    repl_case(CXXRecord,d);
     default:
       break;
   }
@@ -236,113 +187,116 @@ SSTReplacePragma::activate(Decl *d, Rewriter &r, PragmaConfig &cfg)
 }
 
 void
-SSTReplacePragma::activateFunctionDecl(FunctionDecl *d, Rewriter &r)
+SSTReplacePragma::activateFunctionDecl(FunctionDecl *d)
 {
-  if (d->hasBody()) run(d->getBody(), r);
+  if (d->hasBody()){
+    PushGuard<FunctionDecl*> pg(CompilerGlobals::astContextLists.enclosingFunctionDecls, d);
+    //we are replacing expressions in the function body
+    //do NOT set the body to null, many expressions may remain valid
+    activate(d->getBody());
+  }
 }
 
 void
-SSTReplacePragma::activateVarDecl(VarDecl *d, Rewriter &r)
+SSTReplacePragma::activateVarDecl(VarDecl *d)
 {
-  if (d->hasInit()) run(d->getInit(), r);
+  if (d->hasInit()){
+    try {
+      activate(d->getInit());
+    } catch (StmtDeleteException& e) {
+      d->setInit(nullptr);
+    }
+  }
 }
 
 void
-SSTReplacePragma::activateCXXRecordDecl(CXXRecordDecl *d, Rewriter &r)
+SSTReplacePragma::activateCXXRecordDecl(CXXRecordDecl *d)
 {
-  if (d->hasBody()) run(d->getBody(), r);
+  if (d->hasBody()){
+    activate(d->getBody());
+    //do NOT set the body to null, many expressions may remain valid
+  }
 }
 
 void
-SSTInitPragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
+SSTInitPragma::activate(Stmt *s)
 {
-#define repl_case(cls,s,rw) \
-  case Stmt::cls##Class: activate##cls(cast<cls>(s), rw); break
+#define repl_case(cls,s) \
+  case Stmt::cls##Class: activate##cls(cast<cls>(s)); break
   switch(s->getStmtClass()){
-    repl_case(DeclStmt,s,r);
-    repl_case(BinaryOperator,s,r);
+    repl_case(DeclStmt,s);
+    repl_case(BinaryOperator,s);
     default:
-      errorAbort(s, *CI,
-                 "pragma init not applied to initialization statement");
+      errorAbort(s, "pragma init not applied to initialization statement");
   }
 #undef repl_case
 }
 
 void
-SSTInitPragma::activateBinaryOperator(BinaryOperator* op, Rewriter& r)
+SSTInitPragma::activateBinaryOperator(BinaryOperator* op)
 {
-  replace(op->getRHS(), r, init_, *CI);
-  throw StmtDeleteException(op);
+  replace(op->getRHS(), init_);
+  op->setRHS(zeroExpr(getStart(op->getRHS())));
 }
 
 void
-SSTInsteadPragma::activate(Stmt *s, Rewriter &r, PragmaConfig &cfg)
+SSTInsteadPragma::activate(Stmt *s)
 {
-  replace(s, r, repl_, *CI);
+  replace(s, repl_);
   throw StmtDeleteException(s);
 }
 
 void
-SSTInitPragma::activateDeclStmt(DeclStmt* s, Rewriter& r)
+SSTInitPragma::activateDeclStmt(DeclStmt* s)
 {
   if (!s->isSingleDecl()){
-    errorAbort(s, *CI,
-               "pragma init cannot apply to multiple declaration");
+    errorAbort(s, "pragma init cannot apply to multiple declaration");
   }
   Decl* d = s->getSingleDecl();
   if (!isa<VarDecl>(d)){
-    errorAbort(s, *CI,
-               "pragma init only applies to variable declarations");
+    errorAbort(s, "pragma init only applies to variable declarations");
   }
   VarDecl* vd = cast<VarDecl>(d);
   if (!vd->hasInit()){
-    errorAbort(s, *CI,
-               "pragma init applied to variable without initializer");
+    errorAbort(s, "pragma init applied to variable without initializer");
   }
-  replace(vd->getInit(), r, init_, *CI);
+  replace(vd->getInit(), init_);
+  vd->setInit(nullptr);
   throw StmtDeleteException(s);
 }
 
 std::string
-SSTReplacePragma::parse(SourceLocation loc,
-    CompilerInstance& CI, const std::list<Token>& tokens, std::ostream& os)
+SSTReplacePragma::parse(SourceLocation loc, const std::list<Token>& tokens, std::ostream& os)
 {
   if (tokens.size() < 2){
-    errorAbort(loc, CI, "pragma replace requires both a function and replacement text");
+    errorAbort(loc, "pragma replace requires both a function and replacement text");
   }
   const Token& fxn = tokens.front();
   if (!fxn.is(tok::identifier)){
-    errorAbort(loc, CI, "pragma replace got invalid function name");
+    errorAbort(loc, "pragma replace got invalid function name");
   }
 
   auto iter = tokens.begin(); ++iter; //skip front
   auto end = tokens.end();
-  SSTPragma::tokenStreamToString(iter,end,os,CI);
+  SSTPragma::tokenStreamToString(iter,end,os);
 
   return fxn.getIdentifierInfo()->getNameStart();
 }
 
-SSTReplacePragma::SSTReplacePragma(SourceLocation loc, CompilerInstance& CI,
-    const std::list<Token> &tokens)
+SSTReplacePragma::SSTReplacePragma(SourceLocation loc, const std::list<Token> &tokens)
 {
   std::stringstream sstr;
-  fxn_ = parse(loc, CI, tokens, sstr);
+  match_ = parse(loc, tokens, sstr);
   replacement_ = sstr.str();
 }
 
-using namespace pragmas;
+using namespace modes;
 
 static PragmaRegister<SSTStringPragmaShim, SSTInsteadPragma, true> insteadPragma(
     "sst", "instead", SKELETONIZE | PUPPETIZE | SHADOWIZE);
 
 static PragmaRegister<SSTStringPragmaShim, SSTInitPragma, true> initPragma(
     "sst", "init", SKELETONIZE | PUPPETIZE | SHADOWIZE);
-
-static PragmaRegister<SSTTokenListPragmaShim, SSTStartReplacePragma, true> startReplacePragma(
-    "sst", "start_replace", SKELETONIZE | PUPPETIZE | SHADOWIZE);
-
-static PragmaRegister<SSTStringPragmaShim, SSTStopReplacePragma, true> stopReplacePragma(
-    "sst", "stop_replace", SKELETONIZE | PUPPETIZE | SHADOWIZE);
 
 static PragmaRegister<SSTTokenListPragmaShim, SSTReplacePragma, true> replacePragma(
     "sst", "replace", SKELETONIZE | PUPPETIZE | SHADOWIZE);

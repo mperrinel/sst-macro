@@ -83,6 +83,8 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <sprockit/sim_parameters.h>
 #include <sprockit/keyword_registration.h>
 
+#include <unusedvariablemacro.h>
+
 RegisterDebugSlot(os,
     "print debug output related to operating system operators - the majority of this debug info will be related to thread context switching");
 
@@ -131,169 +133,6 @@ class DeleteThreadEvent :
   Thread* thr_;
 };
 
-struct NullImplicitState : public OperatingSystem::ImplicitState
-{
-  SST_ELI_REGISTER_DERIVED(
-    OperatingSystem::ImplicitState,
-    NullImplicitState,
-    "macro",
-    "null",
-    SST_ELI_ELEMENT_VERSION(1,0,0),
-    "an implicit that holds nothing")
-
-  NullImplicitState(SST::Params& params) :
-    OperatingSystem::ImplicitState(params){}
-
-  void setState(int type, int value) override {}
-  void unsetState(int type) override {}
-};
-
-struct NullRegression : public OperatingSystem::ThreadSafeTimerModel<double>
-{
-  /**
-  SST_ELI_REGISTER_DERIVED(
-    OperatingSystem::RegressionModel,
-    NullRegression,
-    "macro",
-    "null",
-    SST_ELI_ELEMENT_VERSION(1,0,0),
-    "a regression model that does nothing")
-  */
-
-  using Parent = OperatingSystem::ThreadSafeTimerModel<double>;
-
-  NullRegression(SST::BaseComponent* comp, const std::string& key,
-                 const std::string& subName, SST::Params& params)
-    : Parent(params, comp, key, ""), computed_(false) {}
-
-  double compute(int n_params, const double params[],
-                 OperatingSystem::ImplicitState* state) override {
-    if (!computed_){
-      computed_ = true;
-      computeMean();
-    }
-    return mean_;
-  }
-
-  int startCollection() override {
-    return Parent::start();
-  }
-
-  void finishCollection(int thr_tag, int n_params, const double params[],
-                         OperatingSystem::ImplicitState* state) override {
-    Parent::finish(thr_tag);
-  }
-
-  /**
-  void finalize(sstmac::TimeDelta t) override {
-    compute_mean();
-    std::string file = key() + ".memo";
-    std::ofstream ofs(file);
-    ofs << key()
-        << "\n" << mean_;
-    ofs.close();
-  }
-  */
-
- private:
-  void computeMean(){
-    double total = 0;
-    for (double d : samples_){
-      total += d;
-    }
-    mean_ = total / samples_.size();
-  }
-
-  double mean_;
-  bool computed_;
-
-};
-
-struct LinearRegression : public OperatingSystem::ThreadSafeTimerModel<std::pair<double,double>>
-{
-  /**
-  SST_ELI_REGISTER_DERIVED(
-    OperatingSystem::RegressionModel,
-    LinearRegression,
-    "macro",
-    "linear",
-    SST_ELI_ELEMENT_VERSION(1,0,0),
-    "a simple linear regression model")
-  */
-
-  using parent = OperatingSystem::ThreadSafeTimerModel<std::pair<double,double>>;
-  LinearRegression(SST::BaseComponent* comp, const std::string& key,
-                   const std::string& subName, SST::Params& params)
-    : parent(params, comp, key, ""), computed_(false) {}
-
-  double compute(int n_params, const double params[],
-                 OperatingSystem::ImplicitState* state) override {
-    if (n_params != 1){
-      spkt_abort_printf("linear regression can only take one parameter - got %d", n_params);
-    }
-    if (!computed_){
-      computeRegression();
-      computed_ = true;
-    }
-    double val = m_*params[0] + b_;
-    //std::cout << "Computed " << key() << "->f(" << params[0] << ") = " << val << std::endl;
-    return val;
-  }
-
-  int startCollection() override {
-    return parent::start();
-  }
-
-  void finishCollection(int thr_tag, int n_params, const double params[],
-                        OperatingSystem::ImplicitState* state) override {
-    if (n_params != 1){
-      spkt_abort_printf("linear regression can only take one parameter - got %d", n_params);
-    }
-    parent::finish(thr_tag, params[0]);
-  }
-
-  /**
-  void finalize(sstmac::TimeDelta t) override {
-    computeRegression();
-    std::string file = key() + ".memo";
-    std::ofstream ofs(file);
-    ofs << key()
-        << "\n" << m_
-        << "\n" << b_;
-    ofs.close();
-  }
-  */
-
- private:
-  void computeRegression(){
-    double meanX = 0;
-    double meanY = 0;
-    for (auto& pair : samples_){
-      meanX += pair.second;
-      meanY += pair.second;
-    }
-    meanX /= samples_.size();
-    meanY /= samples_.size();
-
-    double Cov = 0;
-    double Var = 0;
-    for (auto& pair : samples_){
-      double dx = pair.first - meanX;
-      double dy = pair.second - meanY;
-      Var += dx*dx;
-      Cov += dx*dy;
-    }
-
-    b_ = Cov / Var;
-    m_ = meanY - b_*meanX;
-    //std::cout << "Computed " << key() << "-> m=" << m_ << " b=" << b_ << std::endl;
-  }
-
-  double m_;
-  double b_;
-  bool computed_;
-};
-
 static sprockit::NeedDeletestatics<OperatingSystem> del_statics;
 
 #if SSTMAC_USE_MULTITHREAD
@@ -308,17 +147,15 @@ ThreadContext* OperatingSystem::gdb_original_context_ = nullptr;
 ThreadContext* OperatingSystem::gdb_des_context_ = nullptr;
 std::unordered_map<uint32_t,Thread*> OperatingSystem::all_threads_;
 bool OperatingSystem::gdb_active_ = false;
-std::map<std::string,std::unique_ptr<OperatingSystem::RegressionModel>> OperatingSystem::memoize_models_;
-std::unique_ptr<std::map<std::string,std::string>> OperatingSystem::memoize_init_ = nullptr;
 
-OperatingSystem::OperatingSystem(SST::Component* parent, SST::Params& params) :
-  node_(safe_cast(hw::Node,parent)),
-  blocked_thread_(nullptr),
+OperatingSystem::OperatingSystem(uint32_t id, SST::Params& params, hw::Node* parent) :
+  SubComponent(id, "os", parent),
+  node_(parent),
   active_thread_(nullptr),
+  blocked_thread_(nullptr),
   des_context_(nullptr),
-  compute_sched_(nullptr),
-  SubComponent("os", parent),
   params_(params),
+  compute_sched_(nullptr),
   sync_tunnel_(nullptr)
 {
   my_addr_ = node_ ? node_->addr() : 0;
@@ -329,8 +166,6 @@ OperatingSystem::OperatingSystem(SST::Component* parent, SST::Params& params) :
     params, this, node_ ? node_->proc()->ncores() : 1, node_ ? node_->nsocket() : 1);
 
   StackAlloc::init(params);
-
-  rebuildMemoizations();
 
   SST::Params env_params = params.find_scoped_params("env");
   std::set<std::string> keys = env_params.getKeys();
@@ -353,39 +188,6 @@ OperatingSystem::hostname() const
 }
 
 void
-OperatingSystem::rebuildMemoizations()
-{
-  if (!memoize_init_) return;
-
-  for (auto& pair : *memoize_init_){
-    auto iter = memoize_models_.find(pair.first);
-#if !SSTMAC_INTEGRATED_SST_CORE
-    if (iter == memoize_models_.end()){
-      SST::Params memo_params = params_.find_scoped_params(pair.first);
-      memo_params.insert("fileroot", pair.first);
-      auto* model = sprockit::create<RegressionModel>(
-        "macro", pair.second, node(), pair.first, "", memo_params);
-      memoize_models_[pair.first] = std::unique_ptr<RegressionModel>(model);
-      //EventManager::global->registerStat(model, nullptr);
-    }
-#else
-    spkt_abort_printf("do not yet support memoization in integrated core - failed memoizing %s",
-                      pair.first.c_str());
-#endif
-  }
-}
-
-void
-OperatingSystem::addMemoization(const std::string& name, const std::string& model)
-{
-  if (!memoize_init_){
-    memoize_init_ = std::unique_ptr<std::map<std::string,std::string>>(new std::map<std::string,std::string>);
-  }
-  (*memoize_init_)[name] = model;
-
-}
-
-void
 OperatingSystem::allocateCore(Thread *thr)
 {
   os_debug("attempting to reserve core for thread %d", thr->threadId());
@@ -400,7 +202,7 @@ OperatingSystem::deallocateCore(Thread *thr)
 }
 
 void
-OperatingSystem::initThreads(int nthread)
+OperatingSystem::initThreads(SSTMAC_MAYBE_UNUSED int nthread)
 {
 #if SSTMAC_USE_MULTITHREAD
   if (active_os_.size() == 0){
@@ -506,7 +308,6 @@ void
 OperatingSystem::compute(TimeDelta t)
 {
   // guard the ftq tag in this function
-  const auto& cur_tag = active_thread_->tag();
   FTQScope scope(active_thread_, FTQTag::compute);
 
   sw::UnblockEvent* ev = new sw::UnblockEvent(this, active_thread_);
@@ -613,59 +414,6 @@ OperatingSystem::printLibs(std::ostream &os) const
   for (auto& pair : libs_){
     os << pair.first << "\n";
   }
-}
-
-int
-OperatingSystem::startMemoize(const char *token, const char* model_name)
-{
-  auto iter = memoize_models_.find(token);
-  if (iter == memoize_models_.end()){
-    spkt_abort_printf("memoization %s for model %s was not registered - likely a compiler wrapper error",
-                      token, model_name);
-  }
-  return iter->second->startCollection();
-}
-
-static thread_local std::unique_ptr<sstmac::sw::OperatingSystem::ImplicitState> implicit_memo_state_;
-
-OperatingSystem::ImplicitState*
-OperatingSystem::getImplicitState()
-{
-  if (!implicit_memo_state_){
-    implicit_memo_state_ = std::unique_ptr<sstmac::sw::OperatingSystem::ImplicitState>(
-          sprockit::create<sstmac::sw::OperatingSystem::ImplicitState>(
-        "macro", params_.find<std::string>("implicit_state", "null"), params_));
-  }
-  return implicit_memo_state_.get();
-}
-
-void
-OperatingSystem::stopMemoize(int thr_tag, const char *token, int n_params, double params[])
-{
-  auto iter = memoize_models_.find(token);
-  if (iter == memoize_models_.end()){
-    spkt_abort_printf("memoization %s was not registered - likely a compiler wrapper error",
-                      token);
-  }
-
-  uintptr_t localStorage = get_sstmac_tls();
-  auto* states = (ImplicitState*)(localStorage + SSTMAC_TLS_IMPLICIT_STATE);
-  iter->second->finishCollection(thr_tag, n_params, params, states);
-}
-
-void
-OperatingSystem::computeMemoize(const char *token, int n_params, double params[])
-{
-  auto iter = memoize_models_.find(token);
-  if (iter == memoize_models_.end()){
-    spkt_abort_printf("memoization %s was not registered - likely a compiler wrapper error",
-                      token);
-  }
-
-  uintptr_t localStorage = get_sstmac_tls();
-  auto* states = (ImplicitState*)(localStorage + SSTMAC_TLS_IMPLICIT_STATE);
-  double time = iter->second->compute(n_params, params, states);
-  currentOs()->compute(TimeDelta(time));
 }
 
 void
@@ -987,7 +735,7 @@ OperatingSystem::startThread(Thread* t)
 }
 
 void
-OperatingSystem::startApp(App* theapp, const std::string& unique_name)
+OperatingSystem::startApp(App* theapp, const std::string&  /*unique_name*/)
 {
   os_debug("starting app %d:%d on thread %d",
     int(theapp->tid()), int(theapp->aid()), threadId());

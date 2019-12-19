@@ -124,9 +124,9 @@ API::scheduleDelay(TimeDelta t, ExecutionEvent* ev)
   parent_->os()->sendDelayedExecutionEvent(t, ev);
 }
 
-API::API(SST::Params &params, App *parent, SST::Component* comp) :
-  parent_(parent),
-  host_timer_(nullptr)
+API::API(SST::Params & /*params*/, App *parent, SST::Component*  /*comp*/) :
+  host_timer_(nullptr),
+  parent_(parent)
 {
   //host_timer_(new HostTimer)
 }

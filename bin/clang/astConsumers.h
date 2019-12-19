@@ -51,16 +51,49 @@ Questions? Contact sst-macro-help@sandia.gov
 
 class SkeletonASTConsumer : public clang::ASTConsumer {
  public:
-  SkeletonASTConsumer(clang::Rewriter &R, SkeletonASTVisitor& r) :
-    visitor_(r),
-    firstPass_(r.getCompilerInstance(), r.getPragmas(), R, r.getPragmaConfig())
+  SkeletonASTConsumer(FirstPassASTVisitor& fp, SkeletonASTVisitor& r) :
+    skeletonVisitor_(r),
+    firstPassVisitor_(fp)
   {
     initNullWhitelist();
   }
 
   bool HandleTopLevelDecl(clang::DeclGroupRef DR) override;
 
-  void run();
+  template <class Visitor>
+  void runPass(Visitor& v){
+    CompilerGlobals::setVisitor(v);
+    auto iter = allTopLevelDecls_.begin();
+    while (iter != allTopLevelDecls_.end()){
+      auto tmp = iter++;
+      clang::Decl* d = *tmp;
+
+      v.preVisitTopLevelDecl(d);
+      try {
+        v.TraverseDecl(d);
+      } catch (StmtDeleteException& e) {
+        std::string error = std::string("unhandled delete exception on expression")
+            + " of type " + e.deleted->getStmtClassName();
+        internalError(getStart(e.deleted), error);
+      } catch (DeclDeleteException& e) {
+        if (e.deleted != d){
+          std::string error = std::string("unhandled delete exception on declaration")
+            + " of type " + e.deleted->getDeclKindName();
+          internalError(getStart(e.deleted), error);
+        } else {
+          //top-level declaration deleted
+          //stop visiting this declaration
+          allTopLevelDecls_.erase(tmp);
+        }
+      }
+      v.postVisitTopLevelDecl(d);
+    }
+    v.finalizePass();
+  }
+
+  void runFirstPass();
+
+  void runSkeletonPass();
 
  private:
   void initNullWhitelist();
@@ -69,11 +102,11 @@ class SkeletonASTConsumer : public clang::ASTConsumer {
     return nullWhitelist_.find(name) != nullWhitelist_.end();
   }
 
-  SkeletonASTVisitor& visitor_;
+  SkeletonASTVisitor& skeletonVisitor_;
 
-  FirstPassASTVistor firstPass_;
+  FirstPassASTVisitor& firstPassVisitor_;
 
-  std::list<clang::Decl*> allDecls_;
+  std::list<clang::Decl*> allTopLevelDecls_;
 
   std::set<std::string> nullWhitelist_;
 

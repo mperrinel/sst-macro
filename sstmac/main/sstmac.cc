@@ -93,7 +93,7 @@ class RuntimeParamBcaster :
  public:
   RuntimeParamBcaster(ParallelRuntime* rt) : rt_(rt) {}
 
-  void bcast(void *buf, int size, int me, int root){
+  void bcast(void *buf, int size, int  /*me*/, int root){
     rt_->bcast(buf, size, root);
   }
 
@@ -169,7 +169,7 @@ initOpts(opts& oo, int argc, char** argv)
  * @param params  An already allocated parameter object
  */
 void
-initParams(ParallelRuntime* rt, opts& oo, sprockit::SimParameters::ptr params, bool parallel)
+initParams(SSTMAC_MAYBE_UNUSED ParallelRuntime*  rt, opts& oo, sprockit::SimParameters::ptr params, bool  /*parallel*/)
 {
   //use the config file to set up file search paths
   size_t pos = oo.configfile.find_last_of('/');
@@ -202,7 +202,7 @@ initParams(ParallelRuntime* rt, opts& oo, sprockit::SimParameters::ptr params, b
 
 #if !SSTMAC_INTEGRATED_SST_CORE
 void
-initFirstRun(ParallelRuntime* rt, SST::Params& params)
+initFirstRun(ParallelRuntime* /*rt*/, SST::Params& /*params*/)
 {
 }
 
@@ -266,10 +266,10 @@ runParams(opts& oo,
 #endif
 
 void
-run(opts& oo,
+run(SSTMAC_MAYBE_UNUSED opts&  oo,
   ParallelRuntime* rt,
   SST::Params& params,
-  SimStats& stats)
+  SSTMAC_MAYBE_UNUSED SimStats&  stats)
 {
 
   sstmac::Env::params = params;
@@ -278,14 +278,6 @@ run(opts& oo,
 #if !SSTMAC_INTEGRATED_SST_CORE
   runParams(oo, rt, params, stats);
 #endif
-}
-
-static void tokenize(const std::string& in, std::set<std::string>& tokens){
-  std::stringstream sstr(in);
-  std::string item;
-  while (std::getline(sstr, item, ',')){
-    tokens.insert(item);
-  }
 }
 
 int

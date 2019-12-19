@@ -79,11 +79,6 @@ class SimultaneousBtreeScanActor :
   int nelems_;
 
   reduce_fxn fxn_;
-
-  int num_reducing_rounds_;
-
-  int num_total_rounds_;
-
 };
 
 class SimultaneousBtreeScan :

@@ -80,12 +80,11 @@ private:
  */
 class SSTMemoizePragma : public SSTPragma {
 public:
-  SSTMemoizePragma(clang::SourceLocation Loc, clang::CompilerInstance &CI,
-                   PragmaArgMap &&PragmaStrings);
+  SSTMemoizePragma(clang::SourceLocation Loc, PragmaArgMap &&PragmaStrings);
 
-  void activate(clang::Stmt *S, clang::Rewriter &R, PragmaConfig &Cfg) override;
-  void activate(clang::Decl *D, clang::Rewriter &R, PragmaConfig &Cfg) override;
-  void deactivate(PragmaConfig &cfg) override;
+  void activate(clang::Stmt *S) override;
+  void activate(clang::Decl *D) override;
+  void deactivate() override;
 
 private:
   std::optional<std::vector<std::string>> VariableNames_;
@@ -103,9 +102,8 @@ private:
 
 class SSTMemoizeOMPPragma : public SSTMemoizePragma {
 public:
-  SSTMemoizeOMPPragma(clang::SourceLocation Loc, clang::CompilerInstance &CI,
-                      PragmaArgMap &&PragmaStrings)
-      : SSTMemoizePragma(Loc, CI, std::move(PragmaStrings)) {}
+  SSTMemoizeOMPPragma(clang::SourceLocation Loc, PragmaArgMap &&PragmaStrings)
+      : SSTMemoizePragma(Loc, std::move(PragmaStrings)) {}
 
 private:
   bool isOMP() { return true; }

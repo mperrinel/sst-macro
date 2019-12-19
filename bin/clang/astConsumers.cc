@@ -43,6 +43,7 @@ Questions? Contact sst-macro-help@sandia.gov
 */
 
 #include "astConsumers.h"
+#include "clangGlobals.h"
 
 using namespace clang;
 using namespace clang::driver;
@@ -71,46 +72,29 @@ SkeletonASTConsumer::HandleTopLevelDecl(DeclGroupRef DR)
         //possibly - we need to make sure to only add the function once
         if (fd->isThisDeclarationADefinition()){
           //also, we only really care about the definition anyway
-          allDecls_.push_back(d);
+          allTopLevelDecls_.push_back(d);
         }
         if (isNullWhitelisted(fd->getNameAsString())){
-          visitor_.pragmaConfig_.nullSafeFunctions[fd] = nullptr;
+          CompilerGlobals::astNodeMetadata.nullSafeFunctions[fd] = nullptr;
         }
       }
       break;
      default:
-      allDecls_.push_back(d);
+      allTopLevelDecls_.push_back(d);
       break;
     }
-    firstPass_.TraverseDecl(d);
-    //delay processing to force all template instances to be generated
-    //visitor_.setTopLevelScope(d);
-    //bool isGlobalVar = isa<VarDecl>(d);
-    //visitor_.setVisitingGlobal(isGlobalVar);
-    //visitor_.TraverseDecl(d);
-    //visitor_.setVisitingGlobal(false); //and reset
-    //allDecls_.push_back(d);
   }
   return true;
 }
 
 void
-SkeletonASTConsumer::run()
+SkeletonASTConsumer::runFirstPass()
 {
-  try {
-    for (Decl* d : allDecls_){
-      visitor_.setTopLevelScope(d);
-      bool isGlobalVar = isa<VarDecl>(d);
-      visitor_.setVisitingGlobal(isGlobalVar);
-      visitor_.TraverseDecl(d);
-      visitor_.setVisitingGlobal(false); //and reset
-    }
-    visitor_.finalize();
-  } catch (StmtDeleteException& e) {
-    //e.deleted->dump();
-    std::string error = std::string("unhandled delete exception on expression")
-        + " of type " + e.deleted->getStmtClassName();
-    internalError(getStart(e.deleted), visitor_.getCompilerInstance(), error);
-  }
+  runPass(firstPassVisitor_);
+}
 
+void
+SkeletonASTConsumer::runSkeletonPass()
+{
+  runPass(skeletonVisitor_);
 }

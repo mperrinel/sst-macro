@@ -47,6 +47,8 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <cstring>
 #include <sprockit/errors.h>
 
+#include <unusedvariablemacro.h>
+
 namespace sstmac {
 namespace sw {
 
@@ -91,11 +93,16 @@ getnumprocs(DumpiMeta* dmeta_)
   if (dmeta_) {
     return dmeta_->getnumprocs();
   }
+
+  spkt_throw_printf(sprockit::IllformedError, 
+      "Argument passed to getnumprocs was null");
+
+// This entire block doesn't make a lot of sense, illegal dereference of dmeta_
+#if 0 
   int nrank = 0;
   try {
     while (true) {
-      std::string fname = dumpiFileName(nrank,
-                                dmeta_->dirplusfileprefix_);
+      std::string fname = dumpiFileName(nrank, dmeta_->dirplusfileprefix_);
       nrank++;
     }
   }
@@ -103,6 +110,7 @@ getnumprocs(DumpiMeta* dmeta_)
     //ioerror is thrown when no more trace files can be found
   }
   return nrank;
+#endif
 }
 
 }
@@ -114,6 +122,7 @@ int undumpi_read_stream(void* profile,
       void *uarg);
 
 
+SSTMAC_MAYBE_UNUSED
 static int dumpi_util_ubuntu_linker_is_an_abomination(){
   return undumpi_read_stream(0,0,0);
 }

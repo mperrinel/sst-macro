@@ -67,7 +67,6 @@ class job_launch_event :
   }
 
  private:
-  int appnum_;
   AppLaunchRequest* appman_;
 };
 

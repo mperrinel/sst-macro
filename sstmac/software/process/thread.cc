@@ -63,6 +63,8 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <unusedvariablemacro.h>
+
 MakeDebugSlot(host_compute)
 
 namespace sstmac {
@@ -74,7 +76,7 @@ static thread_safe_u32 THREAD_ID_CNT(0);
 // Private method that gets called by the scheduler.
 //
 void
-Thread::initThread(const SST::Params& params,
+Thread::initThread(const SST::Params&  /*params*/,
   int physical_thread_id, ThreadContext* des_thread, void *stack,
   int stacksize, void* globals_storage, void* tls_storage)
 {
@@ -171,27 +173,27 @@ Thread::runRoutine(void* threadptr)
   }
 }
 
-Thread::Thread(SST::Params& params, SoftwareId sid, OperatingSystem* os) :
-  os_(os),
+Thread::Thread(SSTMAC_MAYBE_UNUSED SST::Params& params, SoftwareId sid, OperatingSystem* os) :
   state_(PENDING),
-  bt_nfxn_(0),
-  last_bt_collect_nfxn_(0),
-  thread_id_(Thread::main_thread),
+  os_(os),
+  parent_app_(nullptr),
   p_txt_(ProcessContext::none),
+  ftag_(FTQTag::null),
+  sid_(sid),
+  host_timer_(nullptr),
+  last_bt_collect_nfxn_(0),
+  bt_nfxn_(0),
+  timed_out_(false),
+  tls_storage_(nullptr),
+  thread_id_(Thread::main_thread),
   context_(nullptr),
   cpumask_(0),
-  host_timer_(nullptr),
-  parent_app_(nullptr),
-  timed_out_(false),
+  active_core_mask_(0),
   block_counter_(0),
   pthread_concurrency_(0),
-  callGraph_(nullptr),
-  ftq_trace_(nullptr),
-  sid_(sid),
-  ftag_(FTQTag::null),
-  tls_storage_(nullptr),
   detach_state_(DETACHED),
-  active_core_mask_(0)
+  callGraph_(nullptr),
+  ftq_trace_(nullptr)
 {
   //make all cores possible active
   cpumask_ = ~(cpumask_);
@@ -265,7 +267,7 @@ Thread::setTlsValue(long thekey, void *ptr)
 }
 
 void
-Thread::appendBacktrace(int id)
+Thread::appendBacktrace(int  /*id*/)
 {
 #if SSTMAC_HAVE_CALL_GRAPH
   backtrace_[bt_nfxn_] = id;
@@ -323,13 +325,13 @@ Thread::spawnOmpParallel()
   spkt_abort_printf("unimplemented: spawn_omp_parallel");
   omp_context& active = omp_contexts_.back();
   active.subthreads.resize(active.requested_num_subthreads);
-  App* parent = parentApp();
-  for (int i=1; i < active.requested_num_subthreads; ++i){
-    //thread* thr = new thread(params, parent->sid(), os_);
-    //thr->setOmpParentContext(active);
-    //startThread(thr);
-    //active.subthreads[i] = thr;
-  }
+  // App* parent = parentApp();
+  // for (int i=1; i < active.requested_num_subthreads; ++i){
+  //   thread* thr = new thread(params, parent->sid(), os_);
+  //   thr->setOmpParentContext(active);
+  //   startThread(thr);
+  //   active.subthreads[i] = thr;
+  // }
   //and finally have this thread enter the region as thread 0
   setOmpParentContext(0, active);
 }

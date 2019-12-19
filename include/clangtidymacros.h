@@ -42,30 +42,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 
-#include <unistd.h>
-#include <sys/time.h>
-#include <cmath>
-
-static void run(){
-#pragma sst memoize model(null)
-  sleep(1);
-}
-
-int main(int argc, char** argv)
-{
-  double wall_start = sstmacWallTime();
-  double vir_start = sstmac_virtual_time();
-  run();
-  double wall_stop = sstmacWallTime();
-  double vir_stop = sstmac_virtual_time();
-  double t_vir = round(vir_stop - vir_start);
-  double t_wall = round(wall_stop - wall_start);
-#ifndef SSTMAC_NO_REPLACEMENTS
-  static const char* name = "skeleton";
+#ifndef include_clangtidymacros_h
+#define include_clangtidymacros_h
+#ifdef __clang_analyzer__
+#define CLANG_ANALYZER_NO_RETURN __attribute__((analyzer_noreturn))
 #else
-  static const char* name = "memoize";
+#define CLANG_ANALYZER_NO_RETURN
 #endif
-  printf("Running %10s:   wall=%.1f virtual=%.1f\n", name, t_wall, t_vir);
-  return 0;
-}
-
+#endif // include_clangtidymacros_h

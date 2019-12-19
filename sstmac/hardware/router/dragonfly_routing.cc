@@ -381,7 +381,6 @@ class DragonflyUGALRouter : public DragonflyValiantRouter {
     uint32_t seed = netsw_->now().time.ticks();
     uint32_t attempt = 0;
     int new_g = dst_g;
-    bool go_valiant = false;
     auto hdr = pkt->rtrHeader<header>();
     int min_port = group_ports_[dst_g][group_port_rotaters_[dst_g]];
     if (dfly_->g() > 2){ //can't do this unless I have an intermediate group!
@@ -869,7 +868,6 @@ struct DragonflyScatterRouter : public Router {
   }
 
   void followPathHelper(int sid, int num_hops, int num_group_hops, int port){
-    int a = dfly_->computeA(sid);
     int g = dfly_->computeG(sid);
     if (port < dfly_->a() || g != my_g_){
       //don't follow inter-grp ports for intra-grp sends

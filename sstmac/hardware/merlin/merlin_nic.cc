@@ -99,13 +99,13 @@ class MerlinNIC :
 
  public:
 #if SSTMAC_INTEGRATED_SST_CORE
-  SST_ELI_REGISTER_SUBCOMPONENT(
+  SST_ELI_REGISTER_SUBCOMPONENT_DERIVED(
     MerlinNIC,
     "macro",
     "merlin_nic",
     SST_ELI_ELEMENT_VERSION(1,0,0),
     "A NIC wrapping Merlin",
-    "nic")
+    sstmac::hw::NIC)
 #else
   SST_ELI_REGISTER_DERIVED(
     NIC,
@@ -116,16 +116,17 @@ class MerlinNIC :
     "A NIC wrapping Merlin")
 #endif
 
-  MerlinNIC(SST::Component* parent, SST::Params& params) :
-    NIC(parent, params),
+  MerlinNIC(uint32_t id, SST::Params& params, Node* parent) :
+    NIC(id, params, parent),
     test_size_(0),
     vns_(2)
   {
-    auto* link_ctrl = parent->loadSubComponent(params.find<std::string>("module"), parent, params);
-    link_control_ = dynamic_cast<SST::Interfaces::SimpleNetwork*>(link_ctrl);
-    if (!link_control_){
-      sprockit::abort("Failed to dynamic cast link control");
-    }
+    int slot_id = 0;
+    link_control_ = loadAnonymousSubComponent<SST::Interfaces::SimpleNetwork>(
+                                 params.find<std::string>("module"),
+                                 "LinkControl", slot_id,
+                                 SST::ComponentInfo::SHARE_PORTS | SST::ComponentInfo::INSERT_STATS,
+                                 params, vns_);
 
     pending_.resize(vns_);
     ack_queue_.resize(vns_);
@@ -200,7 +201,6 @@ class MerlinNIC :
     auto* req = link_control_->recv(vn);
     while (req){
       MyRequest* myreq = static_cast<MyRequest*>(req);
-      uint64_t size = req->size_in_bits/8;
       auto bytes = myreq->size_in_bits/8;
       auto* payload = myreq->takePayload();
       MessageEvent* ev = payload ? static_cast<MessageEvent*>(payload) : nullptr;
@@ -219,20 +219,20 @@ class MerlinNIC :
     return true; //keep me active
   }
 
-  void connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link) override {
+  void connectOutput(int  /*src_outport*/, int  /*dst_inport*/, EventLink::ptr&&  /*link*/) override {
     sprockit::abort("should never be called on Merlin NIC");
   }
 
-  void connectInput(int src_outport, int dst_inport, EventLink::ptr&& link) override {
+  void connectInput(int  /*src_outport*/, int  /*dst_inport*/, EventLink::ptr&&  /*link*/) override {
     sprockit::abort("should never be called on Merlin NIC");
   }
 
-  LinkHandler* creditHandler(int port) override {
+  LinkHandler* creditHandler(int  /*port*/) override {
     sprockit::abort("should never be called on Merlin NIC");
     return nullptr;
   }
 
-  LinkHandler* payloadHandler(int port) override {
+  LinkHandler* payloadHandler(int  /*port*/) override {
     sprockit::abort("should never be called on Merlin NIC");
     return nullptr;
   }

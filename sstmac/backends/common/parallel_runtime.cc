@@ -56,6 +56,8 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <sprockit/thread_safe.h>
 #include <sprockit/printable.h>
 
+#include <unusedvariablemacro.h>
+
 RegisterDebugSlot(parallel);
 
 RegisterKeywords(
@@ -74,7 +76,7 @@ ParallelRuntime* ParallelRuntime::static_runtime_ = nullptr;
 static int backupSize = 10e6;
 
 char*
-ParallelRuntime::CommBuffer::allocateSpace(size_t size, IpcEvent *ev)
+ParallelRuntime::CommBuffer::allocateSpace(size_t size, IpcEvent * /*ev*/)
 {
   uint64_t newOffset = add_int64_atomic(size, &bytesAllocated);
   uint64_t myStartPos = newOffset - size;
@@ -222,7 +224,7 @@ ParallelRuntime::bcastFileStream(const std::string &fname)
 }
 
 void
-ParallelRuntime::initPartitionParams(SST::Params& params)
+ParallelRuntime::initPartitionParams(SSTMAC_MAYBE_UNUSED SST::Params&  params)
 {
 #if SSTMAC_INTEGRATED_SST_CORE
   sprockit::abort("parallel_runtime::init_partition_params: should not be used with integrated core");
@@ -239,7 +241,7 @@ ParallelRuntime::initPartitionParams(SST::Params& params)
 }
 
 ParallelRuntime*
-ParallelRuntime::staticRuntime(SST::Params& params)
+ParallelRuntime::staticRuntime(SSTMAC_MAYBE_UNUSED SST::Params&  params)
 {
 #if SSTMAC_INTEGRATED_SST_CORE
   return nullptr;
@@ -283,13 +285,13 @@ ParallelRuntime::initRuntimeParams(SST::Params& params)
 #endif
 }
 
-ParallelRuntime::ParallelRuntime(SST::Params& params,
+ParallelRuntime::ParallelRuntime(SST::Params&  /*params*/,
                                    int me, int nproc)
-  : part_(nullptr),
-    me_(me),
-    nproc_(nproc),
+  : nproc_(nproc),
     nthread_(1),
-    epoch_(0)
+    me_(me),
+    epoch_(0),
+    part_(nullptr)
 {
   if (me_ == 0){
     sprockit::output::init_out0(&std::cout);

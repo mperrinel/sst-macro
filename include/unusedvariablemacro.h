@@ -41,14 +41,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Questions? Contact sst-macro-help@sandia.gov
 */
-#ifndef bin_clang_replacements_h
-#define bin_clang_replacements_h
 
-#include "clangHeaders.h"
+#ifndef include_unusedvariablemacro_h
+#define include_unusedvariablemacro_h
 
-struct Replacements {
-  std::map<const clang::Decl*, std::string> decls;
-  std::map<const clang::Expr*, std::string> exprs;
-};
-
+#if __cplusplus >= 201703L
+  #define SSTMAC_MAYBE_UNUSED [[maybe_unused]]
+#else
+  #define SSTMAC_MAYBE_UNUSED __attribute__((unused))
 #endif
+
+#endif // include_unusedvariablemacro_h

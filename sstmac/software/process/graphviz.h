@@ -75,7 +75,10 @@ class CallGraph : public SST::Statistics::CustomStatistic
     uint64_t self_time_ticks_;
 
    public:
-    FunctionTrace(int nfxn) : self_time_ticks_(0), calls_(nfxn) {}
+    FunctionTrace(int nfxn) : 
+      calls_(nfxn),
+      self_time_ticks_(0)
+    {}
 
     uint64_t selfTime() const {
       return self_time_ticks_;
@@ -183,7 +186,7 @@ class CallGraphOutput : public sstmac::StatisticOutput
 
   CallGraphOutput(SST::Params& params);
 
-  void registerStatistic(SST::Statistics::StatisticBase* stat) override {}
+  void registerStatistic(SST::Statistics::StatisticBase*) override {}
 
   void startOutputGroup(SST::Statistics::StatisticGroup * grp) override;
   void stopOutputGroup() override;

@@ -80,7 +80,6 @@ void
 test_pt2pt(MPI_Comm comm)
 {
   int rank, size;
-  int worldRank;
   MPI_Comm_rank(comm, &rank);
   MPI_Comm_size(comm, &size);
 

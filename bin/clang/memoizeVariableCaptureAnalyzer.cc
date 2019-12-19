@@ -80,7 +80,7 @@ bool isArithmeticType(clang::Expr const *expr) {
 auto filterExprs(llvm::SmallPtrSet<Expr const *, 4> const &C) {
   auto getSpelling = [](Expr const *e) {
     std::string str;
-    clang::PrintingPolicy Policy(*sst::activeLangOpts);
+    clang::PrintingPolicy Policy(CompilerGlobals::LangOpts());
     llvm::raw_string_ostream os(str);
     e->printPretty(os, nullptr, Policy);
     return str;
@@ -179,7 +179,7 @@ auto forStmtConditionCaptures(clang::Stmt const *FS) {
         getLoopVarsOrAnything,
         getMatchingExprs,
         filterForTopMatch
-      ), *FS, *sst::activeASTContext);
+      ), *FS, CompilerGlobals::ASTContext());
   // clang-format on
 
   return matchers::toPtrSet<Expr>(BN, "FinalExpr");
@@ -233,7 +233,7 @@ auto stmtConditionCaptures(clang::Stmt const *FS) {
         getLoopVarsOrAnything,
         getMatchingExprs,
         filterForTopMatch
-      ), *FS, *sst::activeASTContext);
+      ), *FS, CompilerGlobals::ASTContext());
   // clang-format on
 
   return matchers::toPtrSet<Expr>(BN, "FinalExpr");
@@ -244,7 +244,7 @@ auto getDeclRefExprsToVariables(clang::Stmt const *S,
   auto matches =
       match(findAll(declRefExpr(to(varDecl(matchesName(namedDeclsRegex))))
                         .bind("DeclRefs")),
-            *S, *sst::activeASTContext);
+            *S, CompilerGlobals::ASTContext());
 
   return matchers::toPtrSet<Expr>(matches, "DeclRefs");
 }
@@ -275,7 +275,7 @@ auto getLoopVarDeclsInitializers(clang::Stmt const *S) {
               )
             )
           )
-        ), *S, *sst::activeASTContext);
+        ), *S, CompilerGlobals::ASTContext());
   // clang-format on
 
   return matchers::toPtrSet<Expr>(matches, "ExternalInitializer");
@@ -289,7 +289,6 @@ memoizationAutoMatcher(clang::Stmt const *S, std::string const &namedDeclsRegex,
                        capture::AutoCapture ac) {
 
   llvm::SmallPtrSet<Expr const *, 4> results;
-
   if (!namedDeclsRegex.empty()) {
     auto tmp = getDeclRefExprsToVariables(S, namedDeclsRegex);
     results.insert(tmp.begin(), tmp.end());

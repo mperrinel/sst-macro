@@ -74,13 +74,13 @@ HalvingReduceScatterActor::initDag()
 }
 
 bool
-HalvingReduceScatterActor::isLowerPartner(int virtual_me, int partner_gap)
+HalvingReduceScatterActor::isLowerPartner(int  /*virtual_me*/, int  /*partner_gap*/)
 {
   return false;
 }
 
 void
-HalvingReduceScatterActor::bufferAction(void *dst_buffer, void *msg_buffer, Action* ac)
+HalvingReduceScatterActor::bufferAction(void * /*dst_buffer*/, void * /*msg_buffer*/, Action* /*ac*/)
 {
 }
 

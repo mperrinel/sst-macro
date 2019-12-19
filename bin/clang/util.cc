@@ -51,6 +51,15 @@ using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
 
+PragmaConfig CompilerGlobals::pragmaConfig;
+ASTContextLists CompilerGlobals::astContextLists;
+ASTNodeMetadata CompilerGlobals::astNodeMetadata;
+ToolInfoRegistration CompilerGlobals::toolInfoRegistration;
+
+CompilerInstance* CompilerGlobals::ci;
+Rewriter CompilerGlobals::rewriter;
+
+
 bool
 isValidSrc(const std::string& filename){
   //this is really dirty and not very resilient - but I don't know how to fix this yet
@@ -79,7 +88,7 @@ isCxx(const std::string& filename){
 std::string getStmtSpelling(clang::Stmt const *s, 
           clang::LangOptions const* LangOpts){
 
-  auto &LO = (LangOpts == nullptr) ? *sst::activeLangOpts : *LangOpts; 
+  auto &LO = (LangOpts == nullptr) ? CompilerGlobals::LangOpts() : *LangOpts; 
   clang::PrintingPolicy Policy(LO);
 
   std::string str;
@@ -92,55 +101,55 @@ std::string
 getExprDesugaredTypeSpelling(clang::Expr const *e, 
                              clang::LangOptions const* LangOpts){
 
-  auto &LO = (LangOpts == nullptr) ? *sst::activeLangOpts : *LangOpts; 
+  auto &LO = (LangOpts == nullptr) ? CompilerGlobals::LangOpts() : *LangOpts; 
   clang::PrintingPolicy Policy(LO);
 
   std::string str;
   llvm::raw_string_ostream os(str);
-  e->getType().getDesugaredType(*sst::activeASTContext).print(os,Policy);
+  e->getType().getDesugaredType(CompilerGlobals::ASTContext()).print(os,Policy);
   return str;
 };
 
 void
-errorAbort(SourceLocation loc, CompilerInstance &CI, const std::string &error)
+errorAbort(SourceLocation loc, const std::string &error)
 {
   std::string errorStr;
   llvm::raw_string_ostream os(errorStr);
-  loc.print(os, CI.getSourceManager());
+  loc.print(os, CompilerGlobals::SM());
   os << ": error: " << error;
   std::cerr << os.str() << std::endl;
   exit(EXIT_FAILURE);
 }
 
 void
-errorAbort(const Decl *decl, CompilerInstance &CI, const std::string &error){
+errorAbort(const Decl *decl, const std::string &error){
   std::string errorStr;
   llvm::raw_string_ostream os(errorStr);
   decl->print(os);
   std::cerr << os.str() << std::endl;
-  errorAbort(getStart(decl), CI, error);
+  errorAbort(getStart(decl), error);
 }
 
 void
-errorAbort(const Stmt *s, CompilerInstance &CI, const std::string &error){
-  s->dumpPretty(CI.getASTContext());
-  errorAbort(getStart(s), CI, error);
+errorAbort(const Stmt *s, const std::string &error){
+  s->dumpPretty(CompilerGlobals::CI().getASTContext());
+  errorAbort(getStart(s), error);
 }
 
 void
-warn(const Decl *decl, CompilerInstance &CI, const std::string &error){
-  warn(getStart(decl), CI, error);
+warn(const Decl *decl, const std::string &error){
+  warn(getStart(decl), error);
 }
 
 void
-warn(const Stmt *s, CompilerInstance &CI, const std::string &error){
-  warn(getStart(s), CI, error);
+warn(const Stmt *s, const std::string &error){
+  warn(getStart(s), error);
 }
 
 
 void
-internalError(const Decl *decl, CompilerInstance &CI, const std::string &error){
-  internalError(getStart(decl), CI, error);
+internalError(const Decl *decl, const std::string &error){
+  internalError(getStart(decl), error);
 }
 
 void
@@ -151,30 +160,35 @@ internalError(const std::string &error){
 
 
 void
-internalError(SourceLocation loc, CompilerInstance &CI, const std::string &error)
-{
-  std::string newError = "internal error: " + error;
-	 
-}
-
-void internalError(const clang::Stmt* s, clang::CompilerInstance& CI, const std::string& error)
-{
-  internalError(getStart(s), CI, error);
-}
-
-void
-warn(SourceLocation loc, CompilerInstance &CI, const std::string &warning)
+internalError(SourceLocation loc, const std::string &error)
 {
   std::string errorStr;
   llvm::raw_string_ostream os(errorStr);
-  loc.print(os, CI.getSourceManager());
+  loc.print(os, CompilerGlobals::SM());
+  os << ": internal error: " + error;
+  std::cerr << os.str() << std::endl;
+  exit(EXIT_FAILURE);
+}
+
+void internalError(const clang::Stmt* s, const std::string& error)
+{
+  internalError(getStart(s), error);
+}
+
+void
+warn(SourceLocation loc, const std::string &warning)
+{
+  std::string errorStr;
+  llvm::raw_string_ostream os(errorStr);
+  loc.print(os, CompilerGlobals::SM());
   os << ": warning: " << warning;
   std::cerr << os.str() << std::endl;
 }
 
 void
-replace(SourceRange rng, Rewriter& r, const std::string& repl, CompilerInstance& CI)
+replace(SourceRange rng, const std::string& repl)
 {
+  auto& CI = CompilerGlobals::CI();
   PresumedLoc start = CI.getSourceManager().getPresumedLoc(rng.getBegin());
   PresumedLoc stop = CI.getSourceManager().getPresumedLoc(rng.getEnd());
   int numLinesDeleted = stop.getLine() - start.getLine();
@@ -187,31 +201,31 @@ replace(SourceRange rng, Rewriter& r, const std::string& repl, CompilerInstance&
   //     << " \"" << stop.getFilename()
   //     << "\" " << stop.getColumn()
   //     << "\n";
-  r.ReplaceText(rng, sstr.str());
+  CompilerGlobals::rewriter.ReplaceText(rng, sstr.str());
 }
 
 void
-replace(const Decl *d, Rewriter &r, const std::string &repl, CompilerInstance& CI)
+replace(const Decl *d, const std::string &repl)
 {
-  replace(d->getSourceRange(), r, repl, CI);
+  replace(d->getSourceRange(), repl);
 }
 
 void
-replace(const Stmt *s, Rewriter &r, const std::string &repl, CompilerInstance& CI)
+replace(const Stmt *s, const std::string &repl)
 {
-  replace(s->getSourceRange(), r, repl, CI);
+  replace(s->getSourceRange(), repl);
 }
 
 void
-insertBefore(const Stmt *s, Rewriter &r, const std::string &text)
+insertBefore(const Stmt *s, const std::string &text)
 {
-  r.InsertText(getStart(s), text, false);
+  CompilerGlobals::rewriter.InsertText(getStart(s), text, false);
 }
 
 void
-insertAfter(const Stmt *s, Rewriter &r, const std::string &text)
+insertAfter(const Stmt *s, const std::string &text)
 {
-  r.InsertText(getEnd(s), text, true);
+  CompilerGlobals::rewriter.InsertText(getEnd(s), text, true);
 }
 
 std::string
@@ -231,5 +245,121 @@ makeCxxName(const std::string& name)
     }
   }
   return uniqueFilePrefix;
+}
+
+static Expr* nameToExpr(DeclContext* ctx, const std::string& name, clang::SourceLocation loc)
+{
+  std::vector<NamedDecl*> matches;
+  for (auto* d : ctx->decls()){
+    if (auto* nd = dyn_cast<NamedDecl>(d)){
+      if (nd->getNameAsString() == name){
+        matches.push_back(nd);
+      }
+    }
+  }
+
+  if (!matches.empty()){
+    NamedDecl* nd = matches.back();
+    VarDecl* vd = cast<VarDecl>(nd);
+    if (!vd){
+      std::string error = std::string("name ") + name + " + does not map to VarDecl in construction expr";
+      internalError(getStart(nd), error);
+    }
+
+    DeclRefExpr* dref = DeclRefExpr::Create(
+        ctx->getParentASTContext(),
+        vd->getQualifierLoc(),
+        SourceLocation(),
+        vd,
+        /*enclosing*/ false,
+        loc,
+        vd->getType(),
+        VK_LValue,
+        vd->getFirstDecl());
+
+    return dref;
+  } else {
+    return nullptr;
+  }
+}
+
+Expr* tokenToExpr(DeclContext* ctx, const Token& tok, clang::SourceLocation loc)
+{
+  switch(tok.getKind()){
+    case tok::identifier: {
+      std::string varName = tok.getIdentifierInfo()->getNameStart();
+      return nameToExpr(ctx, varName, loc);
+    }
+    case tok::string_literal: {
+      std::string varName = getLiteralDataAsString(tok);
+      return nameToExpr(ctx, varName, loc);
+    }
+    case tok::kw_true: {
+      llvm::APInt api(32, 1);
+      IntegerLiteral* ilit = IntegerLiteral::Create(ctx->getParentASTContext(), api,
+                                                    ctx->getParentASTContext().IntTy, loc);
+      return ilit;
+    }
+    case tok::kw_false: {
+      llvm::APInt api(32, 0);
+      IntegerLiteral* ilit = IntegerLiteral::Create(ctx->getParentASTContext(), api,
+                                                    ctx->getParentASTContext().IntTy, loc);
+      return ilit;
+    }
+    case tok::numeric_constant: {
+      std::string valueText = getLiteralDataAsString(tok);
+      if (valueText.find('.') == std::string::npos){
+        //make an integer literal
+        int i = std::stoi(valueText.c_str());
+        //just assume 32 bit integer for now
+        llvm::APInt api(32, i, true);
+        IntegerLiteral* ilit = IntegerLiteral::Create(ctx->getParentASTContext(), api,
+                                                      ctx->getParentASTContext().IntTy, loc);
+        return ilit;
+      } else {
+        double d = std::stof(valueText.c_str());
+        llvm::APFloat apf(d);
+        FloatingLiteral* flit = FloatingLiteral::Create(ctx->getParentASTContext(), apf, true,
+                                                        ctx->getParentASTContext().DoubleTy, loc);
+        return flit;
+      }
+      break;
+    }
+    default:
+      return nullptr;
+  }
+}
+
+Expr* zeroExpr(clang::SourceLocation loc)
+{
+  if (CompilerGlobals::astContextLists.enclosingFunctionDecls.empty()){
+    internalError(loc, "no active DeclContext - cannot make zeroExpr");
+  }
+
+  FunctionDecl* fd = CompilerGlobals::astContextLists.enclosingFunctionDecls.back();
+  if (!fd){
+    internalError(loc, "have null DeclContext - cannot make zeroExpr");
+  }
+
+  llvm::APInt api(32, 0);
+  IntegerLiteral* ilit = IntegerLiteral::Create(fd->getParentASTContext(), api,
+                                                fd->getParentASTContext().IntTy, loc);
+  return ilit;
+}
+
+void getLiteralDataAsString(const Token &tok, std::ostream &os)
+{
+  const char* data = tok.getLiteralData(); //not null-terminated, direct from buffer
+  for (int i=0 ; i < tok.getLength(); ++i){
+    //must explicitly add chars, this will not hit a \0
+     os << data[i];
+  }
+}
+
+std::string getLiteralDataAsString(const Token &tok)
+{
+  std::stringstream sstr;
+  getLiteralDataAsString(tok, sstr);
+  return sstr.str();
 }
 

@@ -99,7 +99,7 @@ AbstractFatTree::AbstractFatTree(SST::Params& params) :
   vtk_subtree_theta_ = TWO_PI / num_agg_subtrees_;
 }
 
-#if 0
+#if 0 
 void
 AbstractFatTree::writeBwParams(
   SST::Params& switch_params,
@@ -143,26 +143,22 @@ FatTree::FatTree(SST::Params& params) :
   down_ports_per_core_switch_ =
       params.find<int>("down_ports_per_core_switch");
 
-  int leaf_ports = concentration() + up_ports_per_leaf_switch_;
-  int agg_ports = down_ports_per_agg_switch_ +  up_ports_per_agg_switch_;
-  int la_ports = std::max(leaf_ports,agg_ports);
-
   // check for errors
   checkInput();
 }
 
 Topology::VTKSwitchGeometry
-FatTree::getVtkGeometry(SwitchId sid) const
+FatTree::getVtkGeometry(SwitchId  /*sid*/) const
 {
-  int core_row_cutoff = num_leaf_switches_ + num_agg_switches_;
-  int agg_row_cutoff = num_leaf_switches_;
-  int num_in_row = 0;
   int row = 0;
   int slot = 0;
   int subtree = 0;
   double midpoint = 0;
   std::vector<VTKSwitchGeometry::port_geometry> ports;
   /**
+  int core_row_cutoff = num_leaf_switches_ + num_agg_switches_;
+  int agg_row_cutoff = num_leaf_switches_;
+  int num_in_row = 0;
   if (sid >= core_row_cutoff){
     row = 2;
     slot = (sid - core_row_cutoff);
@@ -254,7 +250,7 @@ FatTree::connectedOutports(SwitchId src, std::vector<Connection>& conns) const
   conns.clear();
 
   // find row
-  int row;
+  int row = -1;
   int num_non_core = num_leaf_switches_ + num_agg_switches_;
   if (src < num_leaf_switches_)
     row = 0;
@@ -262,6 +258,9 @@ FatTree::connectedOutports(SwitchId src, std::vector<Connection>& conns) const
     row = 1;
   else if (num_non_core <= src)
     row = 2;
+  else {
+    spkt_abort_printf("Could not initialize row in FatTree connectedOutports\n");
+  }
 
   // leaf switch
   if (row == 0){
@@ -292,7 +291,6 @@ FatTree::connectedOutports(SwitchId src, std::vector<Connection>& conns) const
         / agg_switches_per_subtree_;
     int my_subtree_spot = (src - num_leaf_switches_)
         % agg_switches_per_subtree_;
-    int agg_spot = src - num_leaf_switches_;
     // up ports
     for (int up_port=0; up_port < up_ports_per_agg_switch_; ++up_port){
       int global_core_down_port =
@@ -357,7 +355,7 @@ FatTree::connectedOutports(SwitchId src, std::vector<Connection>& conns) const
 }
 
 double
-FatTree::portScaleFactor(uint32_t addr, int port) const
+FatTree::portScaleFactor(uint32_t addr, int  /*port*/) const
 {
   int my_level = level(addr);
 
@@ -568,12 +566,12 @@ TaperedFatTree::endpointsConnectedToInjectionSwitch(SwitchId swaddr,
 
 void
 TaperedFatTree::createPartition(
-  int *switch_to_lp,
-  int *switch_to_thread,
-  int me,
-  int nproc,
-  int nthread,
-  int noccupied) const
+  int * /*switch_to_lp*/,
+  int * /*switch_to_thread*/,
+  int  /*me*/,
+  int  /*nproc*/,
+  int  /*nthread*/,
+  int  /*noccupied*/) const
 {
   spkt_throw_printf(sprockit::UnimplementedError, "tapered_fat_tree::createPartition");
 /**
@@ -636,7 +634,7 @@ TaperedFatTree::createPartition(
 }
 
 double
-TaperedFatTree::portScaleFactor(uint32_t addr, int port) const
+TaperedFatTree::portScaleFactor(uint32_t  /*addr*/, int  /*port*/) const
 {
   return 1.0;
 }

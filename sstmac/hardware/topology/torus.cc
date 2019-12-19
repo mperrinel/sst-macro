@@ -53,15 +53,6 @@ Questions? Contact sst-macro-help@sandia.gov
 namespace sstmac {
 namespace hw {
 
-static bool
-equals(const std::vector<int>& coords, int x, int y, int z)
-{
-  if (coords.size() != 3) {
-    return false;
-  }
-  return coords[0] == x && coords[1] == y && coords[2] == z;
-}
-
 Torus::Torus(SST::Params& params) :
   CartesianTopology(params)
 {
@@ -143,7 +134,7 @@ Torus::shortestPathPositive(
 }
 
 double
-Torus::portScaleFactor(uint32_t addr, int port) const
+Torus::portScaleFactor(uint32_t  /*addr*/, int port) const
 {
   if (port >= 2*dimensions_.size()){
     //ejection port

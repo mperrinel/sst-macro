@@ -57,7 +57,7 @@ NamedDecl const *getParentDecl(Stmt const *S){
           hasAncestor(
             namedDecl().bind("ID")
           )
-        ), *S, *sst::activeASTContext));
+        ), *S, CompilerGlobals::ASTContext()));
   // clang-format on
 }
 } // namespace matchers

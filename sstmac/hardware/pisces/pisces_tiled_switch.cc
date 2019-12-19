@@ -98,7 +98,7 @@ PiscesTiledSwitch::tileToRowCol(int tile, int& row, int& col){
 }
 
 void
-PiscesTiledSwitch::initComponents(SST::Params& params)
+PiscesTiledSwitch::initComponents(SST::Params& /*params*/)
 {
   //TODO
 #if 0
@@ -184,7 +184,8 @@ PiscesTiledSwitch::initComponents(SST::Params& params)
 }
 
 void
-PiscesTiledSwitch::connectOutput(int src_outport, int dst_inport, EventLink::ptr&& link)
+PiscesTiledSwitch::connectOutput(int /*src_outport*/, int /*dst_inport*/, 
+                                 EventLink::ptr&& /*link*/)
 {
   //TODO
 #if 0
@@ -195,7 +196,8 @@ PiscesTiledSwitch::connectOutput(int src_outport, int dst_inport, EventLink::ptr
 }
 
 void
-PiscesTiledSwitch::connectInput(int src_outport, int dst_inport, EventLink::ptr&& link)
+PiscesTiledSwitch::connectInput(int /*src_outport*/, int /*dst_inport*/, 
+                                EventLink::ptr&& /*link*/)
 {
   //TODO
 #if 0
@@ -206,7 +208,7 @@ PiscesTiledSwitch::connectInput(int src_outport, int dst_inport, EventLink::ptr&
 }
 
 int
-PiscesTiledSwitch::queueLength(int port, int vc) const
+PiscesTiledSwitch::queueLength(int  /*port*/, int  /*vc*/) const
 {
   spkt_throw_printf(sprockit::UnimplementedError,
     "PiscesTiledSwitch::queue_length");
@@ -229,6 +231,10 @@ PiscesTiledSwitch::handlePayload(Event *ev)
                "tiled switch %d: incoming payload %s",
                int(my_addr_), payload->toString().c_str());
 
+  spkt_abort_printf(
+      "PiscesTiledSwitch::handlePayload, is currently unable to proceed.");
+// TODO fix this block
+#if 0
   int row;// = get_row(hdr->arrival_port);
   PiscesDemuxer* demuxer = row_input_demuxers_[row];
   //now figure out the new port I am routing to
@@ -245,6 +251,7 @@ PiscesTiledSwitch::handlePayload(Event *ev)
                payload->edgeOutport(), payload->nextVC(),
                getRow(edge_port), getCol(edge_port));
   demuxer->handlePayload(payload);
+#endif
 }
 
 std::string
@@ -254,13 +261,13 @@ PiscesTiledSwitch::toString() const
 }
 
 LinkHandler*
-PiscesTiledSwitch::creditHandler(int port)
+PiscesTiledSwitch::creditHandler(int  /*port*/)
 {
   return newLinkHandler(this, &PiscesTiledSwitch::handleCredit);
 }
 
 LinkHandler*
-PiscesTiledSwitch::payloadHandler(int port)
+PiscesTiledSwitch::payloadHandler(int  /*port*/)
 {
   return newLinkHandler(this, &PiscesTiledSwitch::handlePayload);
 }
