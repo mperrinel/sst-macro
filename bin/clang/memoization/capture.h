@@ -51,6 +51,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <chrono>
 #include <cstdio>
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -64,13 +65,22 @@ template <typename... Args> struct print_types {
   }
 };
 
+template <typename T> T parseType(T t) { return t; }
+
+inline std::string parseType(char const *p) { return std::string(p); }
+
+template <typename... Args> auto parseTypes(Args... args) {
+  return std::make_tuple(parseType(args)...);
+}
+
 template <typename... Args> class Capture {
 public:
   Capture(char const *unique_id) : unique_id_(unique_id) {}
 
-  void capture_start(char const *unique_id, Args... args) {
+  template <typename... Args2>
+  void capture_start(char const *unique_id, Args2... args) {
     assert(unique_id_ == unique_id);
-    arg_buffer_ = std::make_tuple(args...);
+    arg_buffer_ = parseTypes(args...);
     start_setup();
   }
 
@@ -118,11 +128,12 @@ template <typename... Args> class TimerCSV : public Capture<Args...> {
 public:
   TimerCSV(char const *unique_id)
       : Capture<Args...>(unique_id), fileOS_(std::string(unique_id) + ".csv") {
-      for(auto i = 0; i < sizeof...(Args); ++i){
-        fileOS_ << "arg" << std::to_string(i) << ",";
-      }
-      fileOS_ << "time\n" << std::flush;
+    fileOS_ << "loads,stores,target_info,region_attributes,";
+    for (auto i = 4; i < sizeof...(Args); ++i) {
+      fileOS_ << "arg" << std::to_string(i-3) << ",";
     }
+    fileOS_ << "time\n" << std::flush;
+  }
 
 private:
   void start_setup() override {

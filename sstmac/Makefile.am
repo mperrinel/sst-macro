@@ -19,6 +19,7 @@ STD_SUBDIRS = \
   backends \
   main \
   libraries \
+  llvm \
   skeletons \
   test_skeletons \
   sst_core \

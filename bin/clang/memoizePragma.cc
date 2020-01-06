@@ -72,7 +72,8 @@ std::string generateUniqueFunctionName(clang::SourceLocation const &Loc,
 
   auto &SM = CompilerGlobals::SM();
   std::string path = SM.getFilename(Loc).str();
-  Prefix += cleanPath(path) + std::to_string(SM.getPresumedLineNumber(Loc));
+  Prefix += cleanPath(path) + std::to_string(SM.getPresumedLineNumber(Loc)) +
+            "_memoize";
 
   return Prefix;
 }
@@ -121,40 +122,53 @@ std::string declare_start_function(
     std::string const &FuncName,
     std::vector<memoize::ExpressionStrings> const &ExprStrs) {
 
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  os << "void " << FuncName << "("
-     << parseExprString(ExprStrs,
-                        [](memoize::ExpressionStrings const &es) {
-                          return es.getSrcFileType();
-                        })
-     << ");";
-  return out;
+  return sst::strings::replace_all(
+      R"func(
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void $name_start($args);
+
+#ifdef __cplusplus
+}
+#endif
+)func",
+      {{"$name", FuncName},
+       {"$args",
+        parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
+          return es.getSrcFileType();
+        })}});
 }
 
 std::string
 declare_end_function(std::string const &FuncName,
                      std::vector<memoize::ExpressionStrings> const &) {
+  return sst::strings::replace_all(
+      R"func(
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-  std::string out;
-  llvm::raw_string_ostream os(out);
+void $func_end();
 
-  os << "void " << FuncName << "_end();";
-  return out;
+#ifdef __cplusplus
+}
+#endif
+)func",
+      "$func", FuncName);
 }
 
 std::string
 start_call_site(std::string const &FuncName,
                 std::vector<memoize::ExpressionStrings> const &ExprStrs) {
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  os << FuncName << "("
-     << parseExprString(ExprStrs,
-                        [](memoize::ExpressionStrings const &es) {
-                          return es.getExprSpelling();
-                        })
-     << ");";
-  return out;
+  auto call_args =
+      parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
+        return es.getExprSpelling();
+      });
+
+  return sst::strings::replace_all("$func_start($args);",
+                                   {{"$func", FuncName}, {"$args", call_args}});
 };
 
 std::string
@@ -162,69 +176,60 @@ start_definition(std::string const &FuncName,
                  std::vector<memoize::ExpressionStrings> const &ExprStrs,
                  bool isOMPPragma) {
 
-  std::string out;
-  llvm::raw_string_ostream os(out);
-
-  std::string argList =
+  auto TemplateArgs =
       parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
-        return es.getCppType();
+        auto type = es.getCppType();
+        if (type == "const char *") { // Can't capture const char *
+          type = "std::string";
+        }
+        return type;
       });
+
+  auto FunctionParams = parseExprString(
+      ExprStrs, [var = 0](memoize::ExpressionStrings const &es) mutable {
+        auto v = es.getCppType() + " v" + std::to_string(var++);
+        return v;
+      });
+
+  auto CaptureArgs = parseExprString(
+      ExprStrs, [var = 0](memoize::ExpressionStrings const &es) mutable {
+        auto v = "v" + std::to_string(var++);
+        return v;
+      });
+
   if (isOMPPragma) {
-    argList += ",int,int";
+    TemplateArgs += ",int,int,int";
+    CaptureArgs +=
+        ",omp_get_max_threads(),omp_get_proc_bind(),omp_get_num_places()";
   }
 
-  auto captureFlagName = FuncName + "_capture_flag";
-  auto captureVarName = FuncName + "_capture_var";
-
-  os << "void " << FuncName << "("
-     << parseExprString(
-            ExprStrs,
-            [var = 0](memoize::ExpressionStrings const &es) mutable {
-              auto v = es.getCppType() + " v" + std::to_string(var++);
-              return v;
-            })
-     << "){\n\tstd::call_once(" << captureFlagName << ",\n\t\t[]{"
-     << captureVarName << " = "
-     << "memoize::getCaptureType<" << argList << ">(\"" << FuncName
-     << "\");});\n"
-     << "\t" << captureVarName << "->capture_start("
-     << "\"" << FuncName << "\", "
-     << parseExprString(
-            ExprStrs, [var = 0](memoize::ExpressionStrings const &es) mutable {
-              auto v = "v" + std::to_string(var++);
-              return v;
-            });
-  if (isOMPPragma) {
-    os << ",omp_get_num_threads(),omp_get_proc_bind()";
-  }
-  os << ");\n}";
-
-  return out;
+  return sst::strings::replace_all(
+      R"func(
+extern "C"
+void $FN_start($params){
+  std::call_once($FN_capture_flag,
+    []{$FN_capture_var = memoize::getCaptureType<$temp_args>("$FN");});
+  $FN_capture_var->capture_start("$FN", $args);
+}
+)func",
+      {{"$FN", FuncName},
+       {"$params", FunctionParams},
+       {"$temp_args", TemplateArgs},
+       {"$args", CaptureArgs}});
 }
 
 std::string end_definition(std::string const &FuncName,
                            std::vector<memoize::ExpressionStrings> const &) {
 
-  std::string out;
-  llvm::raw_string_ostream os(out);
-
   auto captureVarName = FuncName + "_capture_var";
-
-  os << "void " << FuncName << "_end("
-     << "){\n\t" << captureVarName << "->capture_stop("
-     << "\"" << FuncName << "\");\n}";
-
-  return out;
+  return sst::strings::replace_all(
+      "extern \"C\" void $FN_end(){$CV->capture_stop(\"$FN\");}",
+      {{"$FN", FuncName}, {"$CV", captureVarName}});
 }
 
 std::string end_call_site(std::string const &FuncName,
                           std::vector<memoize::ExpressionStrings> const &) {
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-
-  os << FuncName << "_end();";
-  return out;
+  return FuncName + "_end();";
 }
 
 std::string write_static_capture_variable(
@@ -233,11 +238,15 @@ std::string write_static_capture_variable(
 
   std::string argList =
       parseExprString(ExprStrs, [](memoize::ExpressionStrings const &es) {
-        return es.getCppType();
+        auto type = es.getCppType();
+        if (type == "const char *") {
+          type = "std::string";
+        }
+        return type;
       });
   if (isOMPPragma) {
     // omp_num_threads, omp_proc_bind
-    argList += ",int,int";
+    argList += ",int,int,int";
   }
 
   std::string out;
@@ -279,11 +288,35 @@ parseCaptureOptions(std::optional<std::vector<std::string>> &VariableNames) {
 
 namespace memoize {
 
-SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation /*Loc*/,
+SSTMemoizePragma::SSTMemoizePragma(clang::SourceLocation loc,
                                    PragmaArgMap &&PragmaStrings)
     : VariableNames_(parseKeyword(PragmaStrings, "variables")),
       ExtraExpressions_(parseKeyword(PragmaStrings, "extra_exressions")),
-      DoAutoCapture_(parseCaptureOptions(VariableNames_)) {}
+      DoAutoCapture_(parseCaptureOptions(VariableNames_)) {
+
+  /* The following expressions are there to provide places for OPT to replace
+     the captures with more information, unfortunately adding more information
+     will require modifying the opt plugin, this file, and the capture file.
+     TODO One day we can try to figure out a sane way to fix this.
+   */
+  auto &ctx = CompilerGlobals::ASTContext();
+  // IR Info
+  llvm::APInt api(64, -1);
+  auto ilit = clang::IntegerLiteral::Create(ctx, api, ctx.IntTy, loc);
+  ExprStrs_.emplace_back(ilit); // Stores
+  ExprStrs_.emplace_back(ilit); // Loads
+
+  auto ConstChar = clang::QualType(ctx.CharTy);
+  ConstChar.addConst();
+
+  auto StrTy = ctx.getPointerType(ConstChar);
+
+  clang::StringRef strRef("\"unknown\"");
+  auto target = clang::StringLiteral::Create(
+      ctx, strRef, clang::StringLiteral::StringKind::Ascii, false, StrTy, loc);
+  ExprStrs_.emplace_back(target); // target
+  ExprStrs_.emplace_back(target); // omp_region_attributes
+}
 
 ExpressionStrings::ExpressionStrings(clang::Expr const *e)
     : spelling(getStmtSpelling(e)) {
@@ -321,15 +354,17 @@ void SSTMemoizePragma::activate(clang::Stmt *S) {
   start_capture_definition_ = start_definition(FuncName, ExprStrs_, isOMP());
   stop_capture_definition_ = end_definition(FuncName, ExprStrs_);
 
-  CompilerGlobals::rewriter.InsertTextBefore(
-      getStart(ParentDecl), declare_start_function(FuncName, ExprStrs_) + "\n");
-  CompilerGlobals::rewriter.InsertTextBefore(
-      getStart(ParentDecl), declare_end_function(FuncName, ExprStrs_) + "\n");
+  auto &R = CompilerGlobals::rewriter;
+  R.InsertTextBefore(getStart(ParentDecl),
+                     declare_start_function(FuncName, ExprStrs_) + "\n");
+  R.InsertTextBefore(getStart(ParentDecl),
+                     declare_end_function(FuncName, ExprStrs_) + "\n");
 
-  CompilerGlobals::rewriter.InsertTextBefore(
-      pragmaDirectiveLoc, start_call_site(FuncName, ExprStrs_) + "\n");
-  CompilerGlobals::rewriter.InsertTextAfterToken(
-      getEnd(S), end_call_site(FuncName, ExprStrs_) + "\n");
+  R.InsertTextBefore(pragmaDirectiveLoc,
+                     start_call_site(FuncName, ExprStrs_) + "\n");
+  if(auto FS = llvm::dyn_cast<clang::ForStmt>(S)){
+  }
+  R.InsertTextAfterToken(getEnd(S), end_call_site(FuncName, ExprStrs_) + "\n");
 }
 
 void SSTMemoizePragma::activate(clang::Decl *D) {}
@@ -340,8 +375,9 @@ void SSTMemoizePragma::deactivate() {
   #if defined(_OPENMP)
   #include <omp.h>
   #else
-  #define omp_get_num_threads() 1
+  #define omp_get_max_threads() 1
   #define omp_get_proc_bind() 0
+  #define omp_get_num_places() 1
   #endif
   )lit";
 

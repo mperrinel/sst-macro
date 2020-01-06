@@ -99,6 +99,12 @@ static void tokenToString(const Token& tok, std::ostream& os)
   case tok::l_paren:
     os << '(';
     break;
+  case tok::plus:
+    os << '+';
+    break;
+  case tok::colon:
+    os << ':';
+    break;
   case tok::r_paren:
     os << ')';
     break;
@@ -161,6 +167,9 @@ static void tokenToString(const Token& tok, std::ostream& os)
     break;
   case tok::kw_auto:
     os << "auto";
+    break;
+  case tok::kw_default:
+    os << "default";
     break;
   case tok::string_literal:
   case tok::numeric_constant:

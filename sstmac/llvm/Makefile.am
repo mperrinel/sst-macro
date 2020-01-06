@@ -26,19 +26,36 @@ libpuppet_app_la_SOURCES = \
   puppetFunctions.cc
 endif
 
+#lib_LTLIBRARIES = \
+#  libmemtrace.la
+#
+#libmemtrace_la_SOURCES = \
+#  memtrace2.cc \
+#	memtraceTools.cc 
+#
+#libmemtrace_la_CXXFLAGS = \
+#  ${AM_CXXFLAGS} \
+#  -fno-rtti \
+#	-fno-exceptions
+#
+#libmemtrace_la_LDFLAGS = \
+# ${LLVM_LDFLAGS} \
+# -module -shared \
+# -version-info @SSTMAC_LIBVERSION@ \
+# -Wl,-rpath,@CLANG_INSTALL_DIR@/lib 
+
 lib_LTLIBRARIES = \
-  libmemtrace.la
+  libmemoize.la
 
-libmemtrace_la_SOURCES = \
-  memtrace2.cc \
-	memtraceTools.cc 
+libmemoize_la_SOURCES = \
+  memoization/fingerprinting.cc
 
-libmemtrace_la_CXXFLAGS = \
+libmemoize_la_CXXFLAGS = \
   ${AM_CXXFLAGS} \
   -fno-rtti \
 	-fno-exceptions
 
-libmemtrace_la_LDFLAGS = \
+libmemoize_la_LDFLAGS = \
  ${LLVM_LDFLAGS} \
  -module -shared \
  -version-info @SSTMAC_LIBVERSION@ \

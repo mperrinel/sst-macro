@@ -232,6 +232,7 @@ AC_CONFIG_FILES([
  sstmac/libraries/omp/Makefile
  sstmac/libraries/machines/Makefile
  sstmac/libraries/Makefile
+ sstmac/llvm/Makefile
  sstmac/skeletons/Makefile
  sstmac/test_skeletons/Makefile
  sstmac/software/Makefile

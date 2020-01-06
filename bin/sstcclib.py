@@ -159,7 +159,7 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
   import sys
   import platform
   from configlib import getstatusoutput
-  from sstccvars import sstLdFlags, sstCppFlags
+  from sstccvars import sstLdFlags, sstCppFlags, sstMemoizationCppFlags
   from sstccvars import prefix, execPrefix, includeDir, cc, cxx, spackcc, spackcxx
   from sstccvars import sstCxxFlagsStr, sstCFlagsStr
   from sstccvars import includeDir
@@ -185,6 +185,9 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
   if os.environ.has_key("SSTMAC_SKELETONIZE"):
     val = int(os.environ["SSTMAC_SKELETONIZE"])
     skeletonizing = bool(val)
+
+  if not (memoizing ^ skeletonizing): # Only one can be true
+    raise ValueError("Cannot have both skeletonize and memoize enabled.")
 
   sstmacExe = cleanFlag(os.path.join(prefix, "bin", "sstmac"))
 
@@ -227,10 +230,16 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
 
   haveClangSrcToSrc = bool(clangCppFlagsStr)
 
-  for entry in sstCppFlags:
-    clean = cleanFlag(entry)
-    if clean: #don't add empty flags
-      ctx.cppFlags.append(clean)
+  if memoizing:
+   for entry in sstMemoizationCppFlags:
+     clean = cleanFlag(entry)
+     if clean: #don't add empty flags
+       ctx.cppFlags.append(clean)
+  else:
+   for entry in sstCppFlags:
+     clean = cleanFlag(entry)
+     if clean: #don't add empty flags
+       ctx.cppFlags.append(clean)
 
   import argparse
   parser = argparse.ArgumentParser(description='Process flags for the SST/macro compiler wrapper')
@@ -276,9 +285,7 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
     ctx.compilerFlags.append("-fvisibility=%s" % args.fvisibility)
 
   if args.skeletonize: ctx.clangArgs.append("--skeletonize")
-  if args.memoize: 
-      memoizing = True
-      ctx.clangArgs.append("--memoize")
+  if args.memoize: ctx.clangArgs.append("--memoize")
   
   #this is probably cmake being a jack-donkey during configure, overwrite it
   if args.std == "c++98": args.std = "c++1y"
@@ -353,12 +360,14 @@ def run(typ, extraLibs="", makeLibrary=False, redefineSymbols=True, runClang=Tru
   if sstCore:
     ctx.defines.append("SSTMAC_EXTERNAL_SKELETON")
 
-  if typ == "c++":
-    ctx.directIncludes.append("cstdint")
-  else:
-    ctx.directIncludes.append("stdint.h")
-  ctx.directIncludes.append("sstmac/compute.h")
-  ctx.directIncludes.append("sstmac/skeleton.h")
+  if skeletonizing: # Only include headers for skeletons not memoization
+      if typ == "c++":
+        ctx.directIncludes.append("cstdint")
+      else:
+        ctx.directIncludes.append("stdint.h")
+
+      ctx.directIncludes.append("sstmac/compute.h")
+      ctx.directIncludes.append("sstmac/skeleton.h")
 
   src2src = True
   if "SSTMAC_SRC2SRC" in os.environ:

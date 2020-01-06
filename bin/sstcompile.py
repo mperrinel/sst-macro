@@ -84,9 +84,10 @@ def addSrc2SrcCompile(ctx, sourceFile, outputFile, args, cmds):
   clangCmdArr.append("--")
   #all of the compiler options go after the -- separator
   #fix intrinsics which might not be known to clang if using a different compiler
-  intrinsicsFixerPath = os.path.join(cleanFlag(includeDir), "sstmac", "replacements", "fixIntrinsics.h")
-  clangCmdArr.append("-include")
-  clangCmdArr.append(intrinsicsFixerPath)
+  if "--skeletonize" in ctx.clangArgs:
+      intrinsicsFixerPath = os.path.join(cleanFlag(includeDir), "sstmac", "replacements", "fixIntrinsics.h")
+      clangCmdArr.append("-include")
+      clangCmdArr.append(intrinsicsFixerPath)
   clangCmdArr.append("-stdlib=libc++")
   if args.std:
     clangCmdArr.append("-std=%s" % args.std)

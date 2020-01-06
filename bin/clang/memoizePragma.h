@@ -106,7 +106,7 @@ public:
       : SSTMemoizePragma(Loc, std::move(PragmaStrings)) {}
 
 private:
-  bool isOMP() { return true; }
+  bool isOMP() override { return true; }
 };
 
 } // namespace memoize

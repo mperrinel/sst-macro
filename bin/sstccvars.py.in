@@ -24,6 +24,13 @@ sstCppFlags = [
 "-DSSTMAC=1",
 ]
 
+sstMemoizationCppFlags = [
+"@SST_CPPFLAGS@",
+"@CPPFLAGS@",
+"-I${includedir}/memoization",
+"-DSSTMAC=1",
+]
+
 clangDir="@CLANG_INSTALL_DIR@"
 
 sstCore=bool("@SST_CPPFLAGS@")
