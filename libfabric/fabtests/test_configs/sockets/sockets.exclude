@@ -1,0 +1,5 @@
+# Regex patterns of tests to exclude in runfabtests.sh
+
+-e dgram
+dgram
+multinode

@@ -1,0 +1,89 @@
+# Makefile.am for sstmac provider
+
+if HAVE_SSTMAC
+
+AM_CPPFLAGS += -I$(top_srcdir)/prov/sstmac/include -I$(top_srcdir)/prov/sstmac
+
+_sstmac_files = \
+	prov/sstmac/src/sstmac_atomic.c \
+	prov/sstmac/src/sstmac_auth_key.c \
+	prov/sstmac/src/sstmac_av.c \
+	prov/sstmac/src/sstmac_bitmap.c \
+	prov/sstmac/src/sstmac_buddy_allocator.c \
+	prov/sstmac/src/sstmac_cm.c \
+	prov/sstmac/src/sstmac_cm_nic.c \
+	prov/sstmac/src/sstmac_cntr.c \
+	prov/sstmac/src/sstmac_cq.c \
+	prov/sstmac/src/sstmac_datagram.c \
+	prov/sstmac/src/sstmac_dom.c \
+	prov/sstmac/src/sstmac_ep.c \
+	prov/sstmac/src/sstmac_eq.c \
+	prov/sstmac/src/sstmac_fabric.c \
+	prov/sstmac/src/sstmac_freelist.c \
+	prov/sstmac/src/sstmac_hashtable.c \
+	prov/sstmac/src/sstmac_init.c \
+	prov/sstmac/src/sstmac_mbox_allocator.c \
+	prov/sstmac/src/sstmac_mr.c \
+	prov/sstmac/src/sstmac_mr_cache.c \
+	prov/sstmac/src/sstmac_mr_notifier.c \
+	prov/sstmac/src/sstmac_msg.c \
+	prov/sstmac/src/sstmac_nameserver.c \
+	prov/sstmac/src/sstmac_nic.c \
+	prov/sstmac/src/sstmac_poll.c \
+	prov/sstmac/src/sstmac_progress.c \
+	prov/sstmac/src/sstmac_queue.c \
+	prov/sstmac/src/sstmac_rma.c \
+	prov/sstmac/src/sstmac_sep.c \
+	prov/sstmac/src/sstmac_shmem.c \
+	prov/sstmac/src/sstmac_smrn.c \
+	prov/sstmac/src/sstmac_tags.c \
+	prov/sstmac/src/sstmac_trigger.c \
+	prov/sstmac/src/sstmac_util.c \
+	prov/sstmac/src/sstmac_vc.c \
+	prov/sstmac/src/sstmac_vector.c \
+	prov/sstmac/src/sstmac_xpmem.c \
+	prov/sstmac/src/sstmac_wait.c
+
+_sstmac_headers = \
+	prov/sstmac/include/fi_ext_sstmac.h \
+	prov/sstmac/include/sstmac_atomic.h \
+	prov/sstmac/include/sstmac_auth_key.h \
+	prov/sstmac/include/sstmac_av.h \
+	prov/sstmac/include/sstmac_bitmap.h \
+	prov/sstmac/include/sstmac_buddy_allocator.h \
+	prov/sstmac/include/sstmac_cm.h \
+	prov/sstmac/include/sstmac_cm_nic.h \
+	prov/sstmac/include/sstmac_cntr.h \
+	prov/sstmac/include/sstmac_cq.h \
+	prov/sstmac/include/sstmac_datagram.h \
+	prov/sstmac/include/sstmac_ep.h \
+	prov/sstmac/include/sstmac_eq.h \
+	prov/sstmac/include/sstmac_freelist.h \
+	prov/sstmac/include/sstmac.h \
+	prov/sstmac/include/sstmac_hashtable.h \
+	prov/sstmac/include/sstmac_mbox_allocator.h \
+	prov/sstmac/include/sstmac_mr.h \
+	prov/sstmac/include/sstmac_mr_cache.h \
+	prov/sstmac/include/sstmac_mr_notifier.h \
+	prov/sstmac/include/sstmac_msg.h \
+	prov/sstmac/include/sstmac_nameserver.h \
+	prov/sstmac/include/sstmac_nic.h \
+	prov/sstmac/include/sstmac_poll.h \
+	prov/sstmac/include/sstmac_progress.h \
+	prov/sstmac/include/sstmac_priv.h \
+	prov/sstmac/include/sstmac_queue.h \
+	prov/sstmac/include/sstmac_rma.h \
+	prov/sstmac/include/sstmac_shmem.h \
+	prov/sstmac/include/sstmac_smrn.h \
+	prov/sstmac/include/sstmac_tags.h \
+	prov/sstmac/include/sstmac_trigger.h \
+	prov/sstmac/include/sstmac_util.h \
+	prov/sstmac/include/sstmac_vc.h \
+	prov/sstmac/include/sstmac_vector.h \
+	prov/sstmac/include/sstmac_xpmem.h \
+	prov/sstmac/include/sstmac_wait.h
+
+rdmainclude_HEADERS += \
+	prov/gni/include/fi_ext_gni.h
+
+endif HAVE_SSTMAC

@@ -22,6 +22,9 @@ EXTRA_DIST = LICENSE bootstrap.sh \
 	configurations
 
 SUBDIRS = $(subdirs) include sumi-mpi sprockit sumi sstmac bin python tests configurations 
+if HAVE_LIBFABRIC
+SUBDIRS += libfabric
+endif
 
 dist_bin_SCRIPTS = sstmacro-libtool
 

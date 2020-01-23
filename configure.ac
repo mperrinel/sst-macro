@@ -206,6 +206,8 @@ CHECK_COMM_DELAY_STATS()
 
 CHECK_CLANG_LLVM()
 
+CHECK_LIBFABRIC()
+
 
 #-------------------------------------------------
 # Configure subdirs
@@ -213,6 +215,12 @@ CHECK_CLANG_LLVM()
 
 # Configure dumpi.
 AC_CONFIG_SUBDIRS([sst-dumpi])
+if test "X$enable_libfabric" = "Xyes"; then
+save_ac_configure_args="$ac_configure_args"
+ac_configure_args="$ac_configure_args --enable-sstmac"
+AC_CONFIG_SUBDIRS([libfabric])
+ac_configure_args="$save_ac_configure_args"
+fi
 
 
 #-------------------------------------------------
