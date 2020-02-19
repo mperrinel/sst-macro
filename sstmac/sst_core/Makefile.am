@@ -13,6 +13,9 @@ include $(top_srcdir)/Makefile.common
 
 library_includedir=$(includedir)/sstmac/sst_core
 
+AM_CPPFLAGS += $(PY_CPPFLAGS)
+AM_LDFLAGS += $(PY_LDFLAGS)
+
 # Depend on all libraries for now
 SUBDIRS = $(STD_SUBDIRS) 
 DIST_SUBDIRS = $(STD_SUBDIRS) 

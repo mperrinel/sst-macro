@@ -151,10 +151,6 @@ if test "X$have_integrated_core" != "Xyes"; then
 CHECK_MPI_PARALLEL()
 fi
 
-CHECK_CPP_STANDARD()
-
-CHECK_PYTHON()
-
 CHECK_SPACK()
 
 AM_CONDITIONAL(HAVE_REGEXP, false)

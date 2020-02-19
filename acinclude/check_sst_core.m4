@@ -23,18 +23,18 @@ if test "X$have_integrated_core" = "Xyes"; then
   AC_DEFINE_UNQUOTED([INTEGRATED_SST_CORE], 1, [Run on integrated SST core])
   AC_SUBST([sst_prefix], "$SST")
   AM_CONDITIONAL([INTEGRATED_SST_CORE], true)
+  SAVE_CPPFLAGS="$CPPFLAGS"
+  SAVE_CXXFLAGS="$CXXFLAGS"
+
   SST_INCLUDES="-I$SST/include -I$SST/include/sst -I$SST/include/sst/core"
   SST_CPPFLAGS="-DSSTMAC_INTEGRATED_SST_CORE=1 $SST_INCLUDES -D__STDC_FORMAT_MACROS"
-  SAVE_CPPFLAGS="$CPPFLAGS"
-  PY_INCLUDES="`python-config --includes`"
-  PY_LDFLAGS=`$srcdir/bin/config_tools/get_py_ldflags`
-  SST_CPPFLAGS="$SST_CPPFLAGS $PY_INCLUDES"
-  CPPFLAGS="$CPPFLAGS $SST_CPPFLAGS"
-
-  SST_LDFLAGS="$PY_LDFLAGS"
+  PY_CPPFLAGS="`$SST/bin/sst-config --PYTHON_CPPFLAGS`"
+  PY_LDFLAGS="`$SST/bin/sst-config --PYTHON_LDFLAGS`"
+  AC_MSG_RESULT([PYCPPFLAGS = $PY_CPPFLAGS])
+  AC_MSG_RESULT([PYLDFLAGS = $PY_LDFLAGS])
+  CPPFLAGS="$CPPFLAGS $SST_CPPFLAGS $PY_CPPFLAGS"
 
   # We have to use CXXFLAGS from sst-config script
-  SAVE_CXXFLAGS="$CXXFLAGS"
   SST_CXXFLAGS="`$SST/bin/sst-config --CXXFLAGS`"
   CXXFLAGS="$CXXFLAGS $SST_CXXFLAGS"
 
@@ -48,28 +48,35 @@ if test "X$have_integrated_core" = "Xyes"; then
   #  AC_MSG_ERROR([C Compiler $CC doesn't match SST core compiler $SST_CORE_CC])
   #fi
 
-  AC_CHECK_HEADERS([Python.h], [],
-      [AC_MSG_ERROR([Could not locate Python installation needed by SST core])])
+  #AC_CHECK_HEADERS([Python.h], [],
+  #    [AC_MSG_ERROR([Could not locate Python installation needed by SST core])])
   AC_CHECK_HEADERS([sst/core/component.h], [],
       [AC_MSG_ERROR([Could not locate SST core header files at $SST])])
 
   SUMI_CPPFLAGS="$SST_INCLUDES"
-  AC_SUBST(SST_CPPFLAGS)
   CPPFLAGS="$SAVE_CPPFLAGS"
   SST_CXXFLAGS=`echo "$SST_CXXFLAGS" | sed s/-std=c++11//g | sed s/-std=c++14//g | sed s/-std=c++1y//g | sed s/-std=c++1z//g`
+  CXXFLAGS="$SAVE_CXXFLAGS"
+  AC_SUBST(SST_CPPFLAGS)
   AC_SUBST(SST_CXXFLAGS)
   AC_SUBST(SST_LDFLAGS)
-  CXXFLAGS="$SAVE_CXXFLAGS"
+  AC_SUBST(PY_CPPFLAGS)
+  AC_SUBST(PY_LDFLAGS)
 
   # Already failed if user tried to specify --with-boost.  We insist on using whatever sst-core
   # was configured with.
-
   AM_CONDITIONAL([USE_MPIPARALLEL], false)
 else
   SST_CPPFLAGS=""
   SST_CXXFLAGS=""
+  SST_LDFLAGS=""
+  PY_LDFLAGS=""
+  PY_CPPFLAGS=""
   AC_SUBST(SST_CPPFLAGS)
   AC_SUBST(SST_CXXFLAGS)
+  AC_SUBST(SST_LDFLAGS)
+  AC_SUBST(PY_CPPFLAGS)
+  AC_SUBST(PY_LDFLAGS)
 fi
 
 ])
