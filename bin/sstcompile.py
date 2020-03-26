@@ -58,6 +58,18 @@ def addLlvmCompile(ctx, llFile, objFile, args, cmds):
   cmdArr.extend(ctx.compilerFlags)
   cmds.append([None,cmdArr,[objFile]])
 
+def addModeDefines(ctx, args):
+  if ctx.mode != ctx.COMPONENT:
+    ctx.defines.append("SSTMAC_EXTERNAL")
+    if ctx.sstCore:
+      ctx.defines.append("SSTMAC_EXTERNAL_SKELETON")
+
+  if ctx.srcToSrc() or ctx.mode == ctx.COMPONENT:
+    ctx.defines.append("SSTMAC_NO_REFACTOR_MAIN")
+
+  if not ctx.simulateMode():
+    ctx.defines.append("SSTMAC_NO_REPLACEMENTS")
+
 def addSrc2SrcCompile(ctx, sourceFile, outputFile, args, cmds):
   from sstccvars import prefix
   from sstccvars import defaultIncludePaths, includeDir
@@ -107,7 +119,7 @@ def addSrc2SrcCompile(ctx, sourceFile, outputFile, args, cmds):
 
   srcRepl = addPrefixAndRebase("sst.pp.",sourceFile,objBaseFolder)
   cxxInitSrcFile = addPrefixAndRebase("sstGlobals.pp.",sourceFile,objBaseFolder) + ".cpp"
-  cmds.append([None,clangCmdArr,[srcRepl,cxxInitSrcFile]]) #None -> don't pipe output anywhere
+  cmds.append([None,clangCmdArr,[ppTmpFile,srcRepl,cxxInitSrcFile]]) #None -> don't pipe output anywhere
 
   tmpTarget = addPrefix("tmp.", outputFile)
   llvmPasses = []

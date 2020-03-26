@@ -283,7 +283,6 @@ parseCaptureOptions(std::optional<std::vector<std::string>> &VariableNames) {
 
   return capture::AutoCapture::AllConditions;
 }
-
 } // namespace
 
 namespace memoize {

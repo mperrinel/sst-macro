@@ -328,8 +328,14 @@ class SkeletonASTVisitor : public clang::RecursiveASTVisitor<SkeletonASTVisitor>
   SkeletonASTVisitor(SSTPragmaList& pragmas,
       GlobalVarNamespace& ns) :
     pragmas_(pragmas),
+    activeBinOpIdx_(-1),
+    foundCMain_(false), 
+    refactorMain_(true),
+    insideCxxMethod_(0), 
+    visitingGlobal_(false),
     globalNs_(ns), 
-    currentNs_(&ns)
+    currentNs_(&ns),
+    keepGlobals_(false)
   {
     initHeaders();
     initReservedNames();
@@ -1010,6 +1016,7 @@ class SkeletonASTVisitor : public clang::RecursiveASTVisitor<SkeletonASTVisitor>
   std::set<const clang::Decl*> variableTemplates_;
   std::map<const clang::Decl*,std::string> scopedNames_;
   bool keepGlobals_ = false;
+
   std::set<clang::DeclRefExpr*> alreadyReplaced_;
   std::map<const clang::Decl*,GlobalStandin> globalStandins_;
   //C-style structs that have typedef'd names we can use doing global replacements

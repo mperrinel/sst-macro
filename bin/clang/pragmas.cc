@@ -506,6 +506,7 @@ SSTAssumeTruePragma::activate(Stmt *s)
   ifs->setCond(trueConstant);
 }
 
+
 void
 SSTAssumeFalsePragma::activate(Stmt *s)
 {

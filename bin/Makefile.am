@@ -16,11 +16,7 @@ bin_PROGRAMS =
 dist_bin_SCRIPTS = \
   findHeaders \
   sst++ \
-  libsst++ \
-  dsst++ \
   sstcc \
-  libsstcc \
-  dsstcc \
   sstcclib.py \
   sstccutils.py \
   sstcompile.py \
@@ -133,6 +129,11 @@ sstmac_clang_LDFLAGS = $(CLANG_LDFLAGS) \
  -lclangBasic \
  @CLANG_LIBTOOLING_LIBS@ \
  @CLANG_LIBTOOLING_SYSTEM_LIBS@
+
+if CLANG_NEED_LIBCPP
+sstmac_clang_LDFLAGS += -lclang-cpp
+endif
+
 endif
 
 

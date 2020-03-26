@@ -123,12 +123,12 @@ static std::string appendText(clang::Expr* expr, const std::string& toAppend)
 void
 CompilerGlobals::setup(clang::CompilerInstance* CI)
 {
+  ci = CI;
   auto getModeInfo = [](llvm::cl::opt<bool> const &cmdline, char const *s) {
     const char* Str = getenv(s);
     if (cmdline.getNumOccurrences() || (Str && atoi(Str))){
         return 1;
     }
-
     return 0;
   };
 

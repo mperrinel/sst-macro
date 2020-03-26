@@ -42,68 +42,50 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Questions? Contact sst-macro-help@sandia.gov
 */
 
-#include <sstmac/hardware/topology/structured_topology.h>
+#include <sstmac/util.h>
+#include <sstmac/replacements/mpi.h>
+#include <sstmac/common/runtime.h>
+#include <sstmac/software/process/backtrace.h>
+#include <sstmac/replacements/mpi.h>
+#include <sstmac/skeleton.h>
+#include <sstmac/compute.h>
+#include <sprockit/keyword_registration.h>
 
-namespace sstmac {
-namespace hw {
+#define sstmac_app_name partner_stride
 
-class XpressRing :
-  public StructuredTopology
+int USER_MAIN(int argc, char** argv)
 {
- public:
-  typedef enum {
-    up_port = 0,
-    down_port = 1,
-    jump_up_port = 2,
-    jump_down_port = 3
-  } port_t;
+  MPI_Init(&argc, &argv);
 
- public:
-   SPKT_REGISTER_DERIVED(
-    Topology,
-    XpressRing,
-    "macro",
-    "xpress",
-    "A ring topology with express cables that make large jumps")
+  int me, nproc;
+  MPI_Comm_rank(MPI_COMM_WORLD, &me);
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
-  XpressRing(SST::Params& params);
-
-  virtual ~XpressRing() {}
-
-  std::string toString() const override {
-    return "xpress ring topology";
+  //send/recv from all the other procs
+  void* null_buffer = nullptr;
+  int count = sstmac::getUnitParam<int>("message_size", "1MB");
+  int stride = sstmac::getParam<int>("stride");
+  int nrepeat = sstmac::getParam<int>("repeat", 5);
+  int send_partner = (me + stride) % nproc;
+  int recv_partner = (me - stride + nproc) % nproc;
+  double t_start = MPI_Wtime();
+  int tag = 42;
+  MPI_Request reqs[2];
+  for (int i=0; i < nrepeat; ++i){
+    int reqidx = 0;
+    if (me < send_partner){
+      MPI_Isend(null_buffer, count, MPI_BYTE, send_partner, tag, MPI_COMM_WORLD, &reqs[reqidx++]);
+    } 
+    if (me > recv_partner){
+      MPI_Irecv(null_buffer, count, MPI_BYTE, recv_partner, tag, MPI_COMM_WORLD, &reqs[reqidx++]);
+    }
+    MPI_Waitall(reqidx, reqs, MPI_STATUSES_IGNORE);
   }
-
-  void connectedOutports(SwitchId src,
-        std::vector<Topology::Connection>& conns) const override;
-
-  void endpointsConnectedToInjectionSwitch(SwitchId swid,
-               std::vector<InjectionPort> &nodes) const override;
-
-  int numHopsToNode(NodeId src, NodeId dest) const override;
-
-  SwitchId numLeafSwitches() const override {
-    return ring_size_;
+  double t_stop = MPI_Wtime();
+  if (me < send_partner){
+    double tput = count*nrepeat/(t_stop-t_start);
+    printf("Rank %2d->%2d: %12.8f GB/s\n", me, send_partner, tput/1e9);
   }
-
-  int maxNumPorts() const override {
-    return 4;
-  }
-
-  SwitchId numSwitches() const override {
-    return ring_size_;
-  }
-
-  int diameter() const override;
-
- private:
-  int numHopsForDistance(int distance) const;
-
-  int ring_size_;
-
-  int jump_size_;
-
-};
-
-}
+  MPI_Finalize();
+  return 0;
 }
