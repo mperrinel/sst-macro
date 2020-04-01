@@ -74,7 +74,7 @@ test_clang_%_cpp.tmp-out: sst.pp.%.cc $(SSTMAC_DEGLOBAL)
     -I$(top_srcdir)/sprockit -I$(top_builddir)/sprockit \
     -include sstmac/compute.h -include sstmac/skeleton.h \
     -include tests/clang_src2src/remove_warnings.h \
-    2>&1 /dev/null | grep error >& $@
+    2>&1 /dev/null | (grep error || true) >& $@
 	-cat $< | grep -v '^#' >> $@
 	-cat sstGlobals.pp.$*.cc.cpp >> $@
 	rm -f sstGlobals.pp.$*.cc.cpp tmp.o sst.pp.$*.cc pp.$*.cc
