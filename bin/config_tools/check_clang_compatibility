@@ -27,7 +27,7 @@ Clang Libtooling <= 3 not supported
 """ % (cmd)
 
 if not rc == 0:
-  print exitMsg
+  print (exitMsg, output)
 
 
 
