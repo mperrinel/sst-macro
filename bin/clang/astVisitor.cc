@@ -50,6 +50,8 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <fstream>
 #include <sstmac/common/sstmac_config.h>
 
+#include <clang/Basic/Version.h>
+
 clang::LangOptions Printing::langOpts;
 clang::PrintingPolicy Printing::policy(Printing::langOpts);
 
@@ -2484,7 +2486,11 @@ SkeletonASTVisitor::getUnderlyingExpr(Expr *e)
     sub_case(e,ExprWithCleanups);
     case Stmt::MaterializeTemporaryExprClass: {
       MaterializeTemporaryExpr* mte = cast<MaterializeTemporaryExpr>(e);
+#if CLANG_VERSION_MAJOR < 10
       e = mte->GetTemporaryExpr();
+#else
+      e = mte->getSubExpr();
+#endif
       break;
     }
     default:

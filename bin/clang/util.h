@@ -45,12 +45,15 @@ Questions? Contact sst-macro-help@sandia.gov
 #ifndef bin_clang_util_h
 #define bin_clang_util_h
 
+
 #include "clangHeaders.h"
 #include <clangtidymacros.h>
 
 #include <string>
 #include <iostream>
 #include "clangGlobals.h"
+
+#include <clang/Basic/Version.h>
 
 
 struct PrettyPrinter
@@ -153,6 +156,8 @@ void warn(const clang::Decl* decl, const std::string& error);
 void insertBefore(const clang::Stmt* s, const std::string& text);
 void insertAfter(const clang::Stmt* s, const std::string& text);
 
+// These overloads are present in llvm 10
+#if CLANG_VERSION_MAJOR < 10
 inline bool operator<=(const clang::SourceLocation &LHS, const clang::SourceLocation &RHS) {
   return LHS < RHS || LHS == RHS;
 }
@@ -164,6 +169,7 @@ inline bool operator>(const clang::SourceLocation &LHS, const clang::SourceLocat
 inline bool operator>=(const clang::SourceLocation &LHS, const clang::SourceLocation &RHS) {
   return !(LHS < RHS);
 }
+#endif
 
 std::string makeCxxName(const std::string& name);
 
