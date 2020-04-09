@@ -78,11 +78,68 @@ def train_RF_model(X, y, n_jobs=-1, criterion="mse", n_estimators=100):
     return model
 
 
+
 def compile_RF_model(model, model_path, model_name, n_files=1):
     tl_model = treelite.gallery.sklearn.import_model(model)
     model_zip = os.path.join(model_path, model_name + ".zip")
     model_so = model_name + ".so"
     tl_model.export_srcpkg(platform='unix', toolchain='gcc',
-                           pkgpath=model_zip, libname="ignored.so",
+                           pkgpath=model_zip, libname=model_so,
+                           params={'parallel_comp': n_files},
+                           verbose=True)
+
+
+# Process_XXX came from
+# https://treelite.readthedocs.io/en/0.32/tutorials/builder.html?highlight=process_tree
+def process_test_node(treelite_tree, sklearn_tree, node_id, sklearn_model):
+    # Initialize the test node with given node ID
+    treelite_tree[node_id].set_numerical_test_node(
+                        feature_id=sklearn_tree.feature[node_id],
+                        opname='<=',
+                        threshold=sklearn_tree.threshold[node_id],
+                        default_left=True,
+                        left_child_key=sklearn_tree.children_left[node_id],
+                        right_child_key=sklearn_tree.children_right[node_id])
+
+
+def process_leaf_node(treelite_tree, sklearn_tree, node_id, sklearn_model):
+    # The `value` attribute stores the output for every leaf node.
+    leaf_value = sklearn_tree.value[node_id].squeeze()
+    # Initialize the leaf node with given node ID
+    treelite_tree[node_id].set_leaf_node(leaf_value)
+
+
+def process_node(treelite_tree, sklearn_tree, node_id, sklearn_model):
+    if sklearn_tree.children_left[node_id] == -1:  # leaf node
+        process_leaf_node(treelite_tree, sklearn_tree, node_id, sklearn_model)
+    else:                                          # test node
+        process_test_node(treelite_tree, sklearn_tree, node_id, sklearn_model)
+
+
+def process_tree(sklearn_tree, sklearn_model):
+    treelite_tree = treelite.ModelBuilder.Tree()
+    # Node #0 is always root for scikit-learn decision trees
+    treelite_tree[0].set_root()
+
+    # Iterate over each node: node ID ranges from 0 to [node_count]-1
+    for node_id in range(sklearn_tree.node_count):
+        process_node(treelite_tree, sklearn_tree, node_id, sklearn_model)
+
+    return treelite_tree
+
+
+def compile_ETR_model(model, model_path, model_name, n_files=1):
+    model_zip = os.path.join(model_path, model_name + ".zip")
+    model_so = model_name + ".so"
+
+    builder=treelite.ModelBuilder(num_feature=model.n_features_,
+                                  random_forest=True)
+
+    for est in model.estimators_:
+        builder.append(process_tree(est.tree_, model))
+
+    tl_model = builder.commit()
+    tl_model.export_srcpkg(platform='unix', toolchain='gcc',
+                           pkgpath=model_zip, libname=model_so,
                            params={'parallel_comp': n_files},
                            verbose=True)
