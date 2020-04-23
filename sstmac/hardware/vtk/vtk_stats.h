@@ -45,6 +45,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #define sstmac_hw_vtk_stats_included_h
 
 #include <sstmac/common/stats/stat_collector.h>
+#include <sstmac/common/sstmac_config.h>
 #include <vector>
 #include <queue>
 #include <memory>
@@ -148,10 +149,21 @@ struct vtk_port {
   }
 };
 
-class StatVTK : public StatCollector
+
+class StatVTK : public SST::Statistics::MultiStatistic<TimeDelta, int, double>
 {
-  FactoryRegister("vtk", stat_collector, stat_vtk)
- public:
+  using Parent=SST::Statistics::MultiStatistic<TimeDelta,int,double>;
+
+  public:
+
+  SST_ELI_DECLARE_STATISTIC_TEMPLATE(
+      StatVTK,
+      "macro",
+      "stat_vtk",
+      SST_ELI_ELEMENT_VERSION(1,0,0),
+      "Collect intensity at each time point for every component",
+      "Statistic<int,int,double>")
+
   struct display_config {
     double idle_switch_color;
     double idle_link_color;
@@ -166,42 +178,52 @@ class StatVTK : public StatCollector
     std::set<int> special_fills;
   };
 
-  StatVTK(SST::Params& params);
 
-  std::string toString() const override {
-    return "VTK stats";
-  }
+  StatVTK(SST::BaseComponent* comp, const std::string& name,
+          const std::string& subName, SST::Params& params);
 
-  static void outputExodus(const std::string& fileroot,
-      std::multimap<uint64_t, traffic_event>&& traffMap,
-      const display_config& cfg,
-      Topology *topo =nullptr);
+//  std::string toString() const override {
+//    return "VTK stats";
+//  }
 
-  void dumpLocalData() override;
+//  static void outputExodus(const std::string& fileroot,
+//      std::multimap<uint64_t, traffic_event>&& traffMap,
+//      const display_config& cfg,
+//      Topology *topo =nullptr);
 
-  void dumpGlobalData() override;
+   void registerOutputFields(SST::Statistics::StatisticFieldsOutput* statOutput) override;
+    void outputStatisticFields(SST::Statistics::StatisticFieldsOutput* statOutput, bool endOfSim) override;
 
-  void globalReduce(ParallelRuntime *rt) override;
+    void addData_impl(TimeDelta time, int port, double intens) override {
+//      event_counts_[event_typeid] += num_ticks;
+    }
 
-  void clear() override;
 
-  void collect_new_intensity(TimeDelta time, int port, double intens);
+//  void dumpLocalData() override;
 
-  void collect_new_color(TimeDelta time, int port, double color);
+//  void dumpGlobalData() override;
 
-  void reduce(StatCollector *coll) override;
+//  void globalReduce(ParallelRuntime *rt) override;
 
-  void finalize(TimeDelta t) override;
+//  void clear() override;
 
-  StatCollector* doClone(SST::Params& params) const override {
-    return new StatVTK(params);
-  }
+//  void collect_new_intensity(TimeDelta time, int port, double intens);
 
-  int id() const {
-    return id_;
-  }
+//  void collect_new_color(TimeDelta time, int port, double color);
 
-  void configure(SwitchId sid, hw::Topology* top);
+//  void reduce(StatCollector *coll) override;
+
+//  void finalize(TimeDelta t) override;
+
+//  StatCollector* doClone(SST::Params& params) const override {
+//    return new StatVTK(params);
+//  }
+
+//  int id() const {
+//    return id_;
+//  }
+
+//  void configure(SwitchId sid, hw::Topology* top);
 
  private:
   /**
@@ -245,9 +267,9 @@ class StatVTK : public StatCollector
   TimeDelta min_interval_;
   int id_;
 
-  std::vector<std::pair<int,int>> filters_;
+  std::vector<std::pair<int,int> > filters_;
 
-  display_config display_cfg_;
+//  display_config display_cfg_;
 
   std::set<traffic_event, compare_events> sorted_event_list_;
 
