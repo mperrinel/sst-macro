@@ -59,6 +59,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <sstmac/hardware/topology/topology.h>
 #include <sstmac/common/event_callback.h>
 #if SSTMAC_INTEGRATED_SST_CORE
+#include <sstmac/hardware/vtk/vtk_stats.h>
 #include <sst/core/factory.h>
 #endif
 RegisterNamespaces("switch", "router", "xbar", "link");
@@ -188,12 +189,8 @@ SculpinSwitch::send(Port& p, SculpinPacket* pkt, Timestamp now)
 
 #if SSTMAC_VTK_ENABLED
 #if SSTMAC_INTEGRATED_SST_CORE
-  traffic_event evt;
-  evt.time_=p.next_free.ticks();
-  evt.id_=my_addr_;
-  evt.p_=p.id;
-  evt.type_=1;
-  traffic_intensity[p.id]->addData(evt);
+//  traffic_event evt(p.next_free.nsecRounded(), p.id, 0, p.id);
+//  traffic_intensity[p.id]->addData(evt);
 #else
   if (vtk_){
     double scale = do_not_filter_packet(pkt);
