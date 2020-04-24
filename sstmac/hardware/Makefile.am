@@ -30,14 +30,14 @@ nobase_library_include_HEADERS += \
   vtk/vtk_stats.h \
   vtk/vtkTrafficSource.h
 
-if INTEGRATED_SST_CORE
-libsstmac_hw_la_SOURCES += \
-   vtk/statoutputexodus.cc
+#if INTEGRATED_SST_CORE
+#libsstmac_hw_la_SOURCES += \
+#   vtk/statoutputexodus.cc
 
-nobase_library_include_HEADERS += \
-   vtk/stattraffic.h \
-   vtk/statoutputexodus.h
-endif
+#nobase_library_include_HEADERS += \
+#   vtk/stattraffic.h \
+#   vtk/statoutputexodus.h
+#endif
 
 libsstmac_hw_la_LDFLAGS += $(VTK_LDFLAGS)
 libsstmac_hw_la_LIBADD += $(VTK_LIBS)
