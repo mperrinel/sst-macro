@@ -79,7 +79,7 @@ class SnapprSwitch :
   SST_ELI_DOCUMENT_PORTS(SSTMAC_VALID_PORTS)
 
   SST_ELI_DOCUMENT_STATISTICS(
-    { "traffic_intensity",    "Count the traffic on a port", "unit of traffic", 1},
+    { "traffic_intensity", "Count the traffic on a port", "unit of traffic", 1},
     {"xmit_stall", "congestion statistic", "cycles", 1}, // Name, Desc, Units, Enable Level
     {"xmit_active", "activity statistic", "cycles", 1}, // Name, Desc, Units, Enable Level
     {"xmit_idle", "idle statistic", "cycles", 1}, // Name, Desc, Units, Enable Level
