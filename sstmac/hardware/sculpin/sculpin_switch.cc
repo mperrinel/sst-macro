@@ -101,8 +101,8 @@ SculpinSwitch::SculpinSwitch(uint32_t id, SST::Params& params) :
   // Ensure topology is set
   Topology::staticTopology(params);
 
-  //vtk_ = registerStatistic<uint64_t,int,double,int>("traffic_intensity", getName());
-  //if (vtk_) vtk_->configure(my_addr_, top_);
+  std::string subname = sprockit::sprintf("sculpin.%d", my_addr_);
+  traffic_intensity = registerMultiStatistic<uint64_t,int,double>(params, "traffic_intensity", subname);
 
   ports_.resize(top_->maxNumPorts());
   for (int i=0; i < ports_.size(); ++i){
@@ -186,14 +186,9 @@ SculpinSwitch::send(Port& p, SculpinPacket* pkt, Timestamp now)
   pkt->setTimeToSend(time_to_send);
   p.link->send(extra_delay, pkt);
 
-#if SSTMAC_VTK_ENABLED
 #if SSTMAC_INTEGRATED_SST_CORE
-  traffic_event evt;
-  evt.time_=p.next_free.ticks();
-  evt.id_=my_addr_;
-  evt.p_=p.id;
-  evt.type_=1;
-  traffic_intensity[p.id]->addData(evt);
+  // TODO: move the traffic intensity to the method that track the packets
+  traffic_intensity->addData(p.next_free.nsecRounded(), p.id, 1);
 #else
   if (vtk_){
     double scale = do_not_filter_packet(pkt);
@@ -207,7 +202,6 @@ SculpinSwitch::send(Port& p, SculpinPacket* pkt, Timestamp now)
       }
     }
   }
-#endif
 #endif
 
   pkt_debug("packet leaving port %d at t=%8.4e: %s",
