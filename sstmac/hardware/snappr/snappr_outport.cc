@@ -95,6 +95,8 @@ SnapprOutPort::SnapprOutPort(uint32_t id, SST::Params& params, const std::string
         parent->registerMultiStatistic<int,uint64_t,uint64_t>(params, "state", subId));
   queue_depth_ftq = dynamic_cast<FTQCalendar*>(
         parent->registerMultiStatistic<int,uint64_t,uint64_t>(params, "queue_depth", subId));
+#else
+  traffic_intensity = registerMultiStatistic<uint64_t, int, double>(params, "traffic_intensity", subId);
 #endif
   ftq_idle_state = FTQTag::allocateCategoryId("idle:" + portName);
   ftq_active_state = FTQTag::allocateCategoryId("active:" + portName);
@@ -144,6 +146,7 @@ SnapprOutPort::send(SnapprPacket* pkt, Timestamp now)
   if (!stall_start.empty()){
     TimeDelta stall_time = now - stall_start;
     xmit_stall->addData(stall_time.ticks());
+
 #if !SSTMAC_INTEGRATED_SST_CORE
     if (state_ftq){
       state_ftq->addData(ftq_stalled_state, stall_start.time.ticks(), stall_time.ticks());
@@ -319,6 +322,13 @@ SnapprOutPort::logQueueDepth()
     queue_depth_ftq->addData(queueLength(), last_queue_depth_collection.time.ticks(), dt.ticks());
     last_queue_depth_collection = now;
   }
+#else
+    if (traffic_intensity){
+      Timestamp now = parent_->now();
+      TimeDelta dt = now - last_queue_depth_collection;
+      traffic_intensity->addData(last_queue_depth_collection.time.ticks(), number_, queueLength());
+      last_queue_depth_collection = now;
+    }
 #endif
 }
 

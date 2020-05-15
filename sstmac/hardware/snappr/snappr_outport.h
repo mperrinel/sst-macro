@@ -140,6 +140,7 @@ struct SnapprOutPort : public SubComponent {
   SST::Statistics::Statistic<uint64_t>* xmit_active;
   SST::Statistics::Statistic<uint64_t>* xmit_idle;
   SST::Statistics::Statistic<uint64_t>* bytes_sent;
+  SST::Statistics::MultiStatistic<uint64_t, int, double>* traffic_intensity;
   sstmac::FTQCalendar* state_ftq;
   sstmac::FTQCalendar* queue_depth_ftq;
   SnapprInPort* inports;
