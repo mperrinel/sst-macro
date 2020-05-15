@@ -83,6 +83,7 @@ class SimpleNode :
     {"otf2", "Write an OTF2 trace", "n/a", 1},
     {"delays", "Statistic for tracking individual message delays", "n/a", 1},
     {"xmit_stall", "congestion stalls", "cycles", 1},
+  { "traffic_intensity", "Count the traffic on a port", "unit of traffic", 1},
     {"xmit_active", "activity statistic", "cycles", 1}, // Name, Desc, Units, Enable Level
     {"xmit_idle", "idle statistic", "cycles", 1}, // Name, Desc, Units, Enable Level
     {"bytes_sent", "data sent on port", "bytes", 1}
